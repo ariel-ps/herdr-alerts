@@ -55,7 +55,7 @@ Choices apply to the next alert without restarting Herdr. Missing game sounds fa
 
 Run `herdr-sound play --flash` or `alert8play --flash` from your terminal for sound and two flashes. Herdr does not need to be running. Named sounds work too: `herdr-sound play 1up --flash`.
 
-Outside Herdr, flashing uses your terminal's visual-bell capability (`tput flash`) without changing its colors or contents. Inside Herdr, it uses a green pane overlay, which requires `experimental.kitty_graphics = true`; Setup enables this for new configurations. Explicit previews work even when automatic alerts are muted and do not show sprites. Omit `--flash` for sound only. A terminal without visual-bell support, or a background job without a terminal, reports a clear error.
+Outside Herdr, flashing uses your terminal's visual-bell capability (`tput flash`) without changing its colors or contents. Inside Herdr, versions with the graphics API use a green pane overlay, which requires `experimental.kitty_graphics = true`. Versions without that API, including Herdr 0.9.3, use the pane's terminal visual bell. Explicit previews work even when automatic alerts are muted and do not show sprites. Omit `--flash` for sound only. A terminal without visual-bell support, or a background job without a terminal, reports a clear error.
 
 ## Commands
 

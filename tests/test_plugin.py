@@ -336,18 +336,35 @@ def check_flashes():
 
 def check_terminal_flashes():
     # Run in a real controlling PTY with no Herdr, and redirect stdout to a log.
-    with tempfile.TemporaryDirectory(prefix='terminal-flash-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='terminal-flash-', dir='/tmp') as temporary, \
+         socket.socket(socket.AF_UNIX) as legacy_socket:
         home = Path(temporary)
+        (home / 'herdr').mkdir()
+        legacy_socket.bind(str(home / 'herdr/herdr.sock'))
+        # Model Herdr 0.9.3: no graphics RPC, but pane process-info is available.
+        herdr = home / 'herdr-stub'
+        herdr.mkdir()
+        (herdr / 'herdr').write_text('''#!/bin/sh
+test "$*" = 'pane process-info --pane wN:p3' || exit 2
+printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
+''')
+        (herdr / 'nc').write_text('''#!/bin/sh
+cat >/dev/null
+printf '%s\\n' '{"error":{"code":"unknown_method","message":"unknown method: pane.graphics.set"}}'
+''')
+        for stub in herdr.iterdir():
+            stub.chmod(0o755)
         player = home / 'afplay'
         player.write_text('#!/bin/sh\nexit "${PLAYBACK_EXIT:-0}"\n')
         player.chmod(0o755)
         env = {**os.environ, 'HOME': temporary, 'XDG_CONFIG_HOME': temporary,
                'HERDR_PLUGIN_CONFIG_DIR': '', 'HERDR_PLUGIN_ROOT': str(ROOT),
-               'HERDR_PANE_ID': '', 'PATH': temporary + ':' + os.environ['PATH']}
-        for shell, command, term, audio_exit in [
-            ('bash', 'alert8play', 'xterm-256color', '0'),
-            ('zsh', 'herdr-sound', 'xterm-256color', '7'),
-            ('bash', 'alert8play', 'dumb', '0'),
+               'HERDR_PANE_ID': '', 'PATH': str(herdr) + ':' + temporary + ':' + os.environ['PATH']}
+        for shell, command, term, audio_exit, pane in [
+            ('bash', 'alert8play', 'xterm-256color', '0', ''),
+            ('zsh', 'herdr-sound', 'xterm-256color', '7', ''),
+            ('bash', 'alert8play', 'dumb', '0', ''),
+            ('bash', 'alert8play', 'xterm-256color', '0', 'wN:p3'),
         ]:
             log = home / 'output.log'
             pid, terminal = pty.fork()
@@ -359,7 +376,8 @@ def check_terminal_flashes():
                     args.append('play')
                 args.append('--flash')
                 os.execvpe(shell, [shell, '-fc', '"$@"', 'check', *args],
-                           {**env, 'TERM': term, 'PLAYBACK_EXIT': audio_exit})
+                           {**env, 'TERM': term, 'PLAYBACK_EXIT': audio_exit,
+                            'HERDR_PANE_ID': pane, 'FLASH_SHELL_PID': str(os.getpid())})
             captured = b''
             reaped = False
             deadline = time.monotonic() + 10

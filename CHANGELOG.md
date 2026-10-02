@@ -6,6 +6,8 @@ All notable changes to Herdr Alerts are documented here.
 
 ### Fixed
 
+- Fall back to the pane's terminal when Herdr lacks the graphics API, including
+  Herdr 0.9.3; report server error messages for other graphics failures.
 - Accept Herdr's workspace-qualified pane IDs (for example, `wN:p3`) when
   flashing panes through manual previews or automatic alerts.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # Shared by automatic alerts and explicit sound previews.
 emulate -L zsh
-setopt pipefail
+setopt pipefail extendedglob
 
 pane=${1:-}
 state=${2:-done}
@@ -10,14 +10,14 @@ if [[ $# -gt 2 || "$pane" == *[^a-zA-Z0-9_:-]* || ( "$state" != done && "$state"
   exit 2
 fi
 
-# No Herdr pane: let terminfo flash the calling terminal without changing its
-# palette. /dev/tty keeps escape sequences out of redirected command output.
-if [[ -z "$pane" ]]; then
+# Let terminfo flash the terminal without changing its palette. Writing to the
+# terminal device keeps escape sequences out of redirected command output.
+terminal_flash() {
   command -v tput >/dev/null 2>&1 || {
     print -u2 -- 'herdr-sound: terminal flashes require tput (ncurses).'
     exit 1
   }
-  if ! { exec 3>/dev/tty; } 2>/dev/null; then
+  if ! { exec 3>"${1:-/dev/tty}"; } 2>/dev/null; then
     print -u2 -- 'herdr-sound: --flash needs an interactive terminal; omit it for audio-only jobs.'
     exit 1
   fi
@@ -28,7 +28,11 @@ if [[ -z "$pane" ]]; then
     }
     sleep 0.12
   done
-  exit 0
+}
+
+if [[ -z "$pane" ]]; then
+  terminal_flash
+  exit $?
 fi
 
 for dependency in jq nc perl; do
@@ -52,7 +56,10 @@ clear_request=$(jq -cn --arg pane "$pane" '{id:"clear",method:"pane.graphics.cle
 
 rpc() {
   local reply
+  rpc_error= rpc_message=
   reply=$(printf '%s\n' "$1" | nc -w 2 -U "$socket") || return 1
+  rpc_error=$(print -r -- "$reply" | jq -r '.error.code // empty' 2>/dev/null)
+  rpc_message=$(print -r -- "$reply" | jq -r '.error.message // empty' 2>/dev/null)
   print -r -- "$reply" | jq -e 'type == "object" and .error == null and has("result")' >/dev/null 2>&1
 }
 
@@ -62,7 +69,21 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 for _ in 1 2; do
   rpc "$set_request" || {
-    print -u2 -- 'herdr-sound: pane flash failed. Check the pane and enable experimental.kitty_graphics in Herdr.'
+    if [[ "$rpc_error" == unknown_method ]]; then
+      # Released Herdr versions may lack the overlay API. Resolve the event's
+      # pane, not the server's own terminal, for the standard visual bell.
+      shell_pid=$(herdr pane process-info --pane "$pane" | jq -er '.result.process_info.shell_pid | select(type == "number")') || exit 1
+      [[ "$shell_pid" == <1-> ]] || exit 1
+      terminal=$(ps -o tty= -p "$shell_pid" | tr -d ' ') || exit 1
+      if [[ ( "$terminal" != tty[a-zA-Z0-9]## && "$terminal" != pts/<-> ) || ! -c "/dev/$terminal" ]]; then
+        print -u2 -- 'herdr-sound: no terminal found for the Herdr pane.'
+        exit 1
+      fi
+      trap - EXIT
+      TERM=xterm-256color terminal_flash "/dev/$terminal"
+      exit $?
+    fi
+    print -u2 -- "herdr-sound: pane flash failed: ${rpc_message:-no valid response from Herdr}. Check the pane and experimental.kitty_graphics."
     exit 1
   }
   sleep 0.18
