@@ -82,3 +82,7 @@ If you hear nothing, run `herdr-sound status`, then `herdr-sound play` and read 
 ## Development
 
 Run `python3 tests/test_plugin.py`. The check exercises bash and zsh commands, saved settings, download dispatch, compatibility commands, and playback failures using stubs, without playing audio or downloading packs.
+
+## License
+
+Original project code is licensed under the [MIT License](LICENSE). Third-party code and media retain their own terms; this license does not grant rights to game assets, downloaded themes, or other third-party content.
