@@ -60,20 +60,37 @@ def save_settings(updates):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest='command')
-    play = commands.add_parser('play', help='Preview a named sound, or the bundled tone')
-    play.add_argument('name', nargs='?')
-    commands.add_parser('list', help='List sounds and whether their pack is downloaded')
-    sync = commands.add_parser('sync', help='Download selected game packs, or all packs')
-    sync.add_argument('games', nargs='*')
-    commands.add_parser('on', help='Enable automatic alerts')
-    commands.add_parser('off', help='Mute automatic alerts (manual previews still work)')
-    commands.add_parser('status', help='Show sound settings and audio-player availability')
-    settings = commands.add_parser('set', help='Choose a sound for an automatic alert')
-    settings.add_argument('event', choices=['blocked', 'done'])
-    settings.add_argument('name')
+    parser = argparse.ArgumentParser(
+        prog='herdr-sound', description='Herdr Sound — alerts for your coding agents.',
+        usage='%(prog)s COMMAND [OPTIONS]', formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''Quick start:
+  herdr-sound play                 Test the included tone
+  herdr-sound download mario       Download a sound pack
+  herdr-sound play 1up             Preview a sound
+  herdr-sound set done 1up         Use it when an agent finishes
+
+Run herdr-sound COMMAND --help for command details.''')
+    commands = parser.add_subparsers(dest='command', title='commands', metavar='COMMAND')
+    play = commands.add_parser('play', help='Preview a sound',
+                               description='Play a named sound, or the included tone when NAME is omitted.')
+    play.add_argument('name', nargs='?', metavar='NAME', help='Sound name from herdr-sound list')
+    commands.add_parser('list', help='Browse sounds and download availability',
+                        description='List sound names, their packs, and local availability.')
+    sync = commands.add_parser('download', aliases=['sync'], help='Download sound packs',
+                               description='Download selected packs, or all seven sound packs when PACK is omitted.')
+    sync.add_argument('games', nargs='*', metavar='PACK', help='Pack name from herdr-sound list')
+    settings = commands.add_parser('set', help='Choose an alert sound',
+                                   description='Choose a sound for blocked (needs attention) or done (finished).')
+    settings.add_argument('event', choices=['blocked', 'done'], help='Agent event to configure')
+    settings.add_argument('name', metavar='NAME', help='Sound name from herdr-sound list')
+    commands.add_parser('enable', aliases=['on'], help='Enable automatic alerts',
+                        description='Enable automatic alerts. The Herdr Alerts plugin must also be enabled.')
+    commands.add_parser('disable', aliases=['off'], help='Mute automatic alerts',
+                        description='Mute automatic alerts. Manual previews still work.')
+    commands.add_parser('status', help='Check settings and audio backend',
+                        description='Show effective settings and player availability. This does not test speakers.')
     args = parser.parse_args()
+    args.command = {'sync': 'download', 'on': 'enable', 'off': 'disable'}.get(args.command, args.command)
     if not args.command:
         parser.print_help()
         return 0
@@ -81,7 +98,7 @@ def main():
     if args.command in ('play', 'list', 'status'):
         extra = [args.name] if args.command == 'play' and args.name else []
         return subprocess.call(['zsh', str(ROOT / 'alert-hook.sh'), '--' + args.command, *extra], env=env)
-    if args.command == 'sync':
+    if args.command == 'download':
         packs = {name: spec for name, spec in json.loads((ROOT / 'sounds/packs.json').read_text())['games'].items()
                  if isinstance(spec, dict) and spec.get('sounds')}
         unknown = [name for name in args.games if name not in packs]
@@ -97,13 +114,13 @@ def main():
         updates = {f'HERDR_ALERT_{args.event.upper()}': args.name,
                    f'HERDR_SOUND_{args.event.upper()}': ''}
     else:
-        updates = {'HERDR_ALERT_OFF': '1' if args.command == 'off' else '0'}
-    target = save_settings(updates)
-    print(f'Saved: {target}')
+        updates = {'HERDR_ALERT_OFF': '1' if args.command == 'disable' else '0'}
+    save_settings(updates)
     if args.command == 'set':
-        print(f'{args.event}: {args.name}. If needed, download its pack with herdr-sound sync {alerts[args.name]["game"]}.')
+        print(f'Updated {args.event} sound to {args.name}.')
+        print(f'Preview: herdr-sound play {args.name}')
     else:
-        print('Automatic alerts: ' + args.command)
+        print('Automatic alerts ' + ('enabled.' if args.command == 'enable' else 'disabled. Manual previews still work.'))
     return 0
 
 

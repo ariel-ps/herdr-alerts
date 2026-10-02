@@ -1,87 +1,99 @@
 # Herdr Alerts
 
-**Hear when an agent finishes or needs your attention, and see which pane it is in.**
+**Hear when an agent finishes or needs your attention. See which pane needs you.**
 
-Herdr Alerts pairs a sound with a flash on the agent's pane. An included tone works immediately; optional game packs add familiar sounds and downloaded sprite assets can add visual cues.
+Herdr Alerts plays a sound and flashes the affected pane when an agent finishes or becomes blocked. An included tone works immediately; optional game packs let you choose your own alert sounds.
+
+```sh
+herdr-sound play                  # Test your speakers
+herdr-sound download mario       # Get a sound pack
+herdr-sound set done 1up         # Use it when an agent finishes
+```
 
 ## Install
 
-[Herdr Setup](https://github.com/ariel-ps/herdr-setup) installs Herdr, this plugin, and its prerequisites. It makes `herdr-sound` available in a new bash or zsh terminal.
+[Herdr Setup](https://github.com/ariel-ps/herdr-setup#prerequisites) installs Herdr, this plugin, and the other setup plugins with their dependencies. Supports macOS, Ubuntu/Debian, and Fedora, with bash or zsh.
 
-For standalone installation, you need **Herdr 0.9.3+**, Git, Python 3, zsh, and jq. Playback uses macOS's `afplay` or Linux's `ffplay` (FFmpeg); pane graphics also use netcat and Perl with `MIME::Base64` and `JSON::PP`. Downloading sound packs requires uv.
+```sh
+curl -fsSL https://raw.githubusercontent.com/ariel-ps/herdr-setup/main/install.sh | sh
+```
+
+You need internet access, `curl`, and `tar`. macOS also needs Homebrew and its command-line build tools; Linux needs `apt-get` or `dnf`, with sudo or root access. Herdr does not need to be installed already.
+
+Open a new terminal, then run `herdr-sound play`. You should hear a short tone; no sound-pack download is required.
+
+<details>
+<summary>Install only this plugin into an existing Herdr installation</summary>
+
+Requires Herdr 0.9.3+, Git, Python 3, zsh, and jq. Audio uses `afplay` on macOS or `ffplay` (FFmpeg) on Linux. Pane graphics use netcat and Perl with `MIME::Base64` and `JSON::PP`; sound-pack downloads also need uv.
 
 ```sh
 herdr plugin install ariel-ps/herdr-alerts --ref main --yes
 herdr plugin action invoke play --plugin dev.ariel.herdr-alerts
 ```
 
-The second command previews the included tone. You can also choose **Preview alert sound** from Herdr's plugin actions.
+The second command previews the included tone. In Herdr, you can also choose **Preview alert sound** from the plugin actions. Use a commit or release tag instead of `main` to pin a version.
 
-Supports macOS, Ubuntu/Debian, and Fedora. Use a commit or release tag instead of `main` to pin a version.
-
-<details>
-<summary>Shell commands after standalone installation</summary>
-
-Source the installed plugin's `shell.bash` from `.bashrc`, or `shell.zsh` from `.zshrc`. These add the plugin's `bin` directory to `PATH`. Bash helpers still use zsh internally; you keep bash as your shell. Herdr Setup handles this integration automatically.
+To use `herdr-sound` in your shell, source the installed plugin's `shell.bash` from `.bashrc`, or `shell.zsh` from `.zshrc`. These add its `bin` directory to `PATH`. Bash remains your shell; the plugin uses zsh internally. Herdr Setup configures this automatically.
 
 </details>
 
-## Try it
-
-After installing through Herdr Setup, open a new terminal:
+## Choose your sounds
 
 ```sh
-herdr-sound play        # Hear the included tone without downloading anything
-herdr-sound list        # See which named sounds are ready or missing
-herdr-sound sync mario  # Download a game pack once
-herdr-sound play 1up    # Preview its sound
+herdr-sound list                  # Browse names, packs, and availability
+herdr-sound download mario
+herdr-sound play 1up              # Preview before choosing
 herdr-sound set done 1up
+
+herdr-sound download redalert
+herdr-sound set blocked tesla
 ```
 
-For Tesla: run `herdr-sound sync redalert`, then `herdr-sound play tesla`.
+Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Manual previews play sound only; automatic alerts also flash the pane and can show sprites when the corresponding assets are available.
 
-Previews play sound only. Automatic alerts also flash the affected pane when an agent becomes blocked or finishes; unavailable game sounds fall back to the included tone. Listing names does not download their packs.
+## Commands
 
-## Everyday commands
-
-| Command | Purpose |
+| Command | What it does |
 | --- | --- |
-| `herdr-sound play [NAME]` | Preview a named sound, or the included tone |
-| `herdr-sound list` | List sound names, packs, and download availability |
-| `herdr-sound sync [PACK ...]` | Download selected sound packs; no names downloads all sound packs |
-| `herdr-sound on` / `herdr-sound off` | Enable or mute automatic alerts; explicit previews still work |
-| `herdr-sound set blocked NAME` | Choose the sound for an agent needing attention |
-| `herdr-sound set done NAME` | Choose the sound for an agent finishing |
-| `herdr-sound status` | Show effective settings and the available audio player |
+| `herdr-sound play [NAME]` | Preview a sound; omit NAME for the included tone |
+| `herdr-sound list` | Browse sounds and see which are ready |
+| `herdr-sound download [PACK ...]` | Download selected packs; omit PACK to download all sound packs |
+| `herdr-sound set blocked NAME` | Choose the needs-attention sound |
+| `herdr-sound set done NAME` | Choose the finished sound |
+| `herdr-sound enable` | Enable automatic alerts |
+| `herdr-sound disable` | Mute automatic alerts; manual previews still work |
+| `herdr-sound status` | Show settings, sound availability, and audio backend |
 
-`herdr-sound --help` shows usage. The previous `alert8play [NAME]`, `alert8play --list`, and `herdr-sounds-sync [PACK ...]` commands still work.
+Run `herdr-sound COMMAND --help` for details. The aliases `sync`, `on`, and `off`, and the older `alert8play` and `herdr-sounds-sync` commands still work.
 
-## Configure
+## Settings
 
-Find your settings directory:
+Find your configuration directory with:
 
 ```sh
 herdr plugin config-dir dev.ariel.herdr-alerts
 ```
 
-Edit or create `config.sh` there:
+Edit or create `config.sh` there to adjust volume or clip duration:
 
 ```sh
-HERDR_ALERT_BLOCKED=tesla
-HERDR_ALERT_DONE=1up
+HERDR_VOLUME_BLOCKED=1.8
 HERDR_VOLUME_DONE=1.0
 HERDR_ALERT_MAX_SECONDS=3
 ```
 
-`set`, `on`, and `off` save choices in a marked section at the end of this file and back up existing settings. Choosing a sound with `set` clears that event's custom file override so the chosen name takes effect. Changes apply to the next alert without restarting Herdr.
+Previews use the done-volume and duration settings. The CLI saves sound choices and enabled state in a marked section at the end of this file, backing up existing settings. `set` also clears that event's custom file override.
 
-Explicit previews use the configured done-volume and duration, even when automatic alerts are off. Downloaded packs are stored under `${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit` and reused across upgrades.
+## No sound?
 
-If you hear nothing, run `herdr-sound status`, then `herdr-sound play` and read any playback error. Status checks settings and player availability; it cannot confirm that speakers are audible. Linux needs a working audio session and output device; containers and SSH sessions may not have one.
+Run `herdr-sound status`, then `herdr-sound play`. Status checks settings and the audio player; the preview tests playback. Read any reported error, and check whether another application can play audio. Linux requires a working audio session and output device.
+
+If a named sound is missing, run `herdr-sound download PACK` using the pack shown by `list`. Downloads are cached under `${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit` and reused across upgrades.
 
 ## Development
 
-Run `python3 tests/test_plugin.py`. The check exercises bash and zsh commands, saved settings, download dispatch, compatibility commands, and playback failures using stubs, without playing audio or downloading packs.
+Run `python3 tests/test_plugin.py`. Checks cover bash/zsh commands, settings, download dispatch, compatibility aliases, and playback errors using stubs. They do not play audio or download packs.
 
 ## License
 

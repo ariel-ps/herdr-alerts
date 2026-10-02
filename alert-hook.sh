@@ -94,7 +94,7 @@ __herdr_alert_list() {
     echo "alert-hook: no alert table — run scripts/gen-alert-tables.py" >&2; return 1
   }
   local n alert_game alert_clip alert_sprite
-  printf "%-12s %-10s %-10s %s\n" NAME PACK STATUS CLIP
+  printf "%-12s %-10s %-10s %s\n" SOUND PACK STATUS CLIP
   for n in ${=$(__herdr_alert_names)}; do
     __herdr_alert_spec "$n" || continue
     # A blank clip column is not missing data: it is the entry saying "anything
@@ -103,16 +103,22 @@ __herdr_alert_list() {
     __herdr_alert_resolve "$n" && available=ready
     printf "%-12s %-10s %-10s %s\n" "$n" "$alert_game" "$available" "${alert_clip:-(any)}"
   done
+  print '\nPreview:  herdr-sound play NAME'
+  print 'Download: herdr-sound download PACK'
 }
 
 __herdr_alert_status() {
-  local event key name override volume availability player
+  local event key name override volume availability player duration='no limit'
+  print 'Herdr Sound\n'
   if [[ "${HERDR_ALERT_OFF:-}" == 1 ]]; then
-    print 'Automatic alerts: off'
+    printf '  %-18s %s\n' 'Automatic alerts' 'disabled'
   else
-    print 'Automatic alerts: on (when the plugin is enabled)'
+    printf '  %-18s %s\n' 'Automatic alerts' 'enabled (requires the plugin to be enabled)'
   fi
-  print -r -- "Configuration: $config/config.sh"
+  [[ -n "${HERDR_ALERT_MAX_SECONDS:-}" ]] && duration="$HERDR_ALERT_MAX_SECONDS seconds"
+  printf '  %-18s %s\n' 'Duration limit' "$duration"
+  print '\nAlerts'
+  printf '  %-10s %-8s %s\n' EVENT VOLUME SOUND
   for event in blocked done; do
     key=HERDR_ALERT_${(U)event}; name=${(P)key}
     key=HERDR_SOUND_${(U)event}; override=${(P)key}
@@ -126,14 +132,15 @@ __herdr_alert_status() {
     else
       availability='unavailable; using bundled tone'
     fi
-    print -r -- "$event: $name ($availability), volume $volume"
+    printf '  %-10s %-8s %s\n' "$event" "$volume" "$name ($availability)"
   done
-  print -r -- "Duration limit: ${HERDR_ALERT_MAX_SECONDS:-none}"
+  print '\nAudio'
   player=$(command -v afplay || command -v ffplay) || {
-    print -u2 'Audio player: missing. Install FFmpeg on Linux.'; return 1
+    print -u2 'herdr-sound: no audio player found. Install FFmpeg on Linux.'; return 1
   }
-  print -r -- "Audio player: $player"
-  print 'Speakers not tested. Run herdr-sound play to test audio output.'
+  printf '  %-18s %s\n' 'Player' "$player"
+  printf '  %-18s %s\n' 'Configuration' "$config/config.sh"
+  print '\nTest speakers: herdr-sound play'
 }
 
 case "${1:-}" in
@@ -146,11 +153,11 @@ case "${1:-}" in
         print -u2 -- "herdr-sound: unknown sound '$2'. Run herdr-sound list."; exit 1
       }
       __herdr_alert_resolve "$2" || {
-        print -u2 -- "herdr-sound: no cached sound for '$2'. Run herdr-sound sync $alert_game."
+        print -u2 -- "herdr-sound: '$2' is not downloaded. Run herdr-sound download $alert_game."
         exit 1
       }
     fi
-    print -r -- "$sound"
+    print -r -- "Playing ${2:-included tone}..."
     sh "$root/bin/herdr-play-sound" "$sound" "${HERDR_VOLUME_DONE:-1.0}" "${HERDR_ALERT_MAX_SECONDS:-}"
     exit $? ;;
 esac

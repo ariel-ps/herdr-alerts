@@ -34,7 +34,7 @@ __herdr_sounds_sync() {
     # archive.org half is a sound pack.
     id=$(jq -r --arg g "$game" '.games[$g].sounds // "" | sub("^archive:"; "")' "$map")
     [ -n "$id" ] || { echo "herdr-sound: unknown game '$game'" >&2; rc=1; continue; }
-    echo "herdr-sound: $game ($id)" >&2
+    printf '\nDownloading %s...\n' "$game" >&2
     if [ "$game" = redalert ]; then
       # This game's clips live inside its own encrypted MIX archives, so it
       # needs a different fetcher and Blowfish — hence uv rather than python3.

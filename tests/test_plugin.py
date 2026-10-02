@@ -42,6 +42,7 @@ def check():
 
             result = invoke()
             assert result.returncode == 0, result.stderr
+            assert result.stdout.strip() == 'Playing included tone...', result.stdout
             assert recorded.read_text().splitlines() == [
                 str(plugin.resolve() / 'sounds/8bit-alert.wav'), '0.4', '0.5']
             recorded.unlink()
@@ -62,16 +63,21 @@ def check():
             recorded.unlink()
             result = invoke('list', command='herdr-sound')
             assert result.returncode == 0, result.stderr
-            rows = {line.split()[0]: line.split()[2] for line in result.stdout.splitlines()[1:]}
+            rows = {line.split()[0]: line.split()[2] for line in result.stdout.split('\n\n')[0].splitlines()[1:]}
             assert rows['1up'] == 'ready' and rows['tesla'] == 'missing', rows
-            for args in [('set', 'done', '1up'), ('on',), ('off',)]:
+            assert 'herdr-sound download PACK' in result.stdout
+            for command in ['', 'play', 'list', 'download', 'set', 'enable', 'disable', 'status']:
+                result = invoke(*([command] if command else []), '--help', command='herdr-sound')
+                assert result.returncode == 0 and 'usage:' in result.stdout, result.stderr
+            for args in [('set', 'done', '1up'), ('enable',), ('disable',), ('on',), ('off',)]:
                 result = invoke(*args, command='herdr-sound')
                 assert result.returncode == 0, result.stderr
                 assert (config / 'config.sh').read_text().startswith(initial_config)
-                if args == ('on',):
+                if args in [('enable',), ('on',)]:
                     result = invoke('status', command='herdr-sound')
-                    assert 'Automatic alerts: on' in result.stdout, result.stderr
-                    assert 'done: 1up (ready)' in result.stdout, result.stdout
+                    assert 'Automatic alerts   enabled' in result.stdout, result.stderr
+                    assert 'done       0.4      1up (ready)' in result.stdout, result.stdout
+                    assert '0.5 seconds' in result.stdout, result.stdout
             settings = (config / 'config.sh').read_text()
             assert settings.count('# >>> herdr-sound >>>') == 1
             assert "HERDR_SOUND_DONE=''" in settings
@@ -94,10 +100,11 @@ def check():
         uv.chmod(0o755)
         sync_log = home / 'sync-log'
         sync_env = {'PATH': str(tools) + ':' + os.environ['PATH'], 'SYNC_LOG': str(sync_log)}
-        result = invoke('sync', 'mario', extra_env=sync_env, command='herdr-sound')
+        result = invoke('download', 'mario', extra_env=sync_env, command='herdr-sound')
         assert result.returncode == 0, result.stderr
         assert 'fetch-game-sounds.py' in sync_log.read_text()
         assert str(home / 'cache/herdr-kit/sounds/mario') in sync_log.read_text()
+        assert 'Downloading mario...' in result.stderr
         sync_log.unlink()
         assert invoke('mario', extra_env=sync_env, command='herdr-sounds-sync').returncode == 0
         assert 'fetch-game-sounds.py' in sync_log.read_text()

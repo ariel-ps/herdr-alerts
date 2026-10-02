@@ -1,4 +1,4 @@
-# Optional sound packs are downloaded with herdr-sound sync.
+# Optional sound packs are downloaded with herdr-sound download.
 HERDR_ALERT_BLOCKED=tesla
 HERDR_ALERT_DONE=1up
 HERDR_VOLUME_BLOCKED=1.8
