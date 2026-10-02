@@ -1,0 +1,18 @@
+id = "dev.ariel.herdr-alerts"
+name = "Status Alerts"
+version = "0.1.0"
+min_herdr_version = "0.9.3"
+description = "Sound, flash and optional sprites when agents finish or need attention."
+platforms = ["macos", "linux"]
+
+[[build]]
+command = ["sh","-c","if command -v uv >/dev/null 2>&1; then uv run --no-project python scripts/gen-alert-tables.py; else python3 scripts/gen-alert-tables.py; fi || echo 'alerts: kept the committed table'"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["zsh","./alert-hook.sh"]
+
+[[actions]]
+id = "alerts"
+title = "List the named alerts"
+command = ["zsh","./alert-hook.sh","--list"]

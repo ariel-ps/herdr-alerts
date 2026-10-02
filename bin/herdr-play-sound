@@ -1,0 +1,19 @@
+#!/bin/sh
+# Arguments: sound file, volume multiplier, optional duration in seconds.
+set -eu
+sound=$1
+volume=${2:-1.0}
+duration=${3:-}
+if command -v afplay >/dev/null 2>&1; then
+    if [ -n "$duration" ]; then
+        exec afplay -v "$volume" -t "$duration" "$sound"
+    fi
+    exec afplay -v "$volume" "$sound"
+elif command -v ffplay >/dev/null 2>&1; then
+    if [ -n "$duration" ]; then
+        exec ffplay -nodisp -autoexit -loglevel error -af "volume=$volume" -t "$duration" "$sound"
+    fi
+    exec ffplay -nodisp -autoexit -loglevel error -af "volume=$volume" "$sound"
+fi
+echo 'herdr-kit: install ffmpeg for Linux audio alerts.' >&2
+exit 1

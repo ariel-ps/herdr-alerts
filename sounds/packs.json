@@ -1,0 +1,88 @@
+{
+  "_comment": [
+    "Single source for what an alert sounds and looks like.",
+    "The hook does not read this at runtime: scripts/gen-alert-tables.py turns it",
+    "into sounds/alerts-generated.zsh, which alert-hook.sh sources. The Python",
+    "fetchers and herdr-sounds-sync read this file directly. Edit here, then",
+    "regenerate — the plugin's [[build]] step does it on install."
+  ],
+
+  "games": {
+    "_comment": "game -> where its media comes from. archive:<item> is an archive.org id, git:<url> a repo the sprite builder cuts frames out of, mix:<item> the game's own encrypted archives.",
+    "mario":     { "sounds": "archive:mario_nes_snes_sounds",
+                   "sprites": "git:https://github.com/justinmeister/Mario-Level-1" },
+    "mvdk":      { "sounds": "archive:131_20220817",
+                   "sprites": "git:https://github.com/plemaster01/PythonDonkeyKong" },
+    "punchout":  { "sounds": "archive:nes-punch-out-mike-tysons-punch-out-sound-effects_sounds-resource-mirror-30jul2024-01",
+                   "sprites": "git:https://github.com/justin-austria/PunchOut" },
+    "metalgear": { "sounds": "archive:sound-effect-44", "sprites": null },
+    "sonic":     { "sounds": "archive:sa-2-288",
+                   "sprites": "git:https://github.com/clarkeadg/opensonic-js" },
+    "kirby":     { "sounds": "archive:KirbyNIDL", "sprites": null },
+    "redalert":  { "sounds": "mix:main_20260628", "sprites": "mix:main_20260628" },
+    "doom":      { "sounds": null,
+                   "sprites": "git:https://github.com/Doom-Utils/shareware-collection" }
+  },
+
+  "redalert_sprites": ["1tnk", "harv", "tsla", "orca", "mgun", "veh-hit1"],
+
+  "sprite_sound": {
+    "_comment": "Red Alert sprite -> the clip that belongs with it. An alert that names one of these sprites and no clip gets its sound from here, so the pairing is stated once.",
+    "tsla": "TSLACHG2",
+    "1tnk": "EYESSIR1",
+    "mgun": "EYESSIR1",
+    "harv": "CASHTURN",
+    "orca": "AACANON3",
+    "veh-hit1": "KABOOM22"
+  },
+
+  "moods": {
+    "_comment": "What happened -> which named Mario clip. Synonyms share a clip; an alert refers to any one of them.",
+    "done|win|complete":             "Mario 1 - Win Stage",
+    "success|bigwin|shipped|merged": "1up",
+    "coin|progress|step":            "coin (nes)",
+    "powerup|installed|upgrade":     "Power Up (nes)",
+    "start|go|build":                "Mario 1 - Jump",
+    "error|fail|broke":              "Mario 1 - Die",
+    "fatal|gameover|abort":          "Mario 1 - Game Over",
+    "warn|careful":                  "time's running out",
+    "waiting|thinking":              "Break Brick"
+  },
+
+  "alerts": {
+    "_comment": [
+      "The named alerts a user picks between: HERDR_ALERT_BLOCKED=tesla.",
+      "A clip comes from `clip` (exact basename), `mood` (looked up in moods), or",
+      "`sprite` (looked up in sprite_sound) — in that order. An alert with none of",
+      "them plays a random clip from its game, which is the only thing worth doing",
+      "for the packs whose clips are numbered rather than named."
+    ],
+    "unit-ready": { "game": "redalert", "sprite": "1tnk" },
+    "tesla":      { "game": "redalert", "sprite": "tsla" },
+    "harvester":  { "game": "redalert", "sprite": "harv" },
+    "orca":       { "game": "redalert", "sprite": "orca" },
+    "kaboom":     { "game": "redalert", "sprite": "veh-hit1" },
+    "redalert":   { "game": "redalert" },
+
+    "win":        { "game": "mario", "mood": "done",    "sprite": "star" },
+    "1up":        { "game": "mario", "mood": "success", "sprite": "mushroom" },
+    "coin":       { "game": "mario", "mood": "coin" },
+    "powerup":    { "game": "mario", "mood": "powerup", "sprite": "fireflower" },
+    "die":        { "game": "mario", "mood": "error",   "sprite": "goomba" },
+    "gameover":   { "game": "mario", "mood": "fatal",   "sprite": "koopa" },
+    "waiting":    { "game": "mario", "mood": "waiting", "sprite": "jump" },
+
+    "dk":         { "game": "mvdk",      "sprite": "dk" },
+    "barrel":     { "game": "mvdk",      "sprite": "barrel" },
+    "punchout":   { "game": "punchout",  "sprite": "mac" },
+    "spin":       { "game": "sonic",     "sprite": "spin" },
+    "codec":      { "game": "metalgear" },
+    "kirby":      { "game": "kirby" }
+  },
+
+  "states": {
+    "_comment": "The alert each herdr transition plays by default. HERDR_ALERT_BLOCKED / HERDR_ALERT_DONE name a different one; HERDR_SOUND_* still beats both with a literal path.",
+    "blocked": "unit-ready",
+    "done":    "win"
+  }
+}
