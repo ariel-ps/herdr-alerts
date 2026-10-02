@@ -23,8 +23,9 @@ from PIL import Image
 
 import importlib.util
 
+ROOT = Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location(
-    "ra_sounds", Path(__file__).resolve().parent / "fetch-redalert-sounds.py")
+    "ra_sounds", ROOT / "libexec" / "fetch-redalert-sounds.py")
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 
@@ -35,7 +36,7 @@ MAX_SUBMIX = _mod.MAX_SUBMIX
 
 SIZE = 40
 SHADOW = 4
-CONFIG = Path(__file__).resolve().parent.parent / "sounds" / "packs.json"
+CONFIG = ROOT / "data" / "packs.json"
 # MIX entries are keyed by a hash of the filename, not the name, so the ids are
 # derived rather than written down.
 WANTED_NAMES = json.loads(CONFIG.read_text())["redalert_sprites"]

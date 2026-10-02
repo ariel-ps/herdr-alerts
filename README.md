@@ -93,6 +93,14 @@ If a named sound is missing, run `herdr-sound download PACK` using the pack show
 
 ## Development
 
+The catalog is `data/packs.json`; regenerate the committed event lookup after editing it:
+
+```sh
+python3 scripts/build/gen-alert-tables.py
+```
+
+`src/` contains the Rust CLI. `bin/` contains its public launchers, `hooks/` contains the pane event adapter, and `libexec/` contains the compiled binary and private playback/download helpers. `generated/alerts.zsh` is the generated lookup. Sprite acquisition under `scripts/dev/` remains maintainer tooling.
+
 ```sh
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
@@ -102,5 +110,7 @@ python3 tests/test_plugin.py
 The integration check compiles the Rust executable, then tests Bash/Zsh commands, settings, downloads, compatibility aliases, and playback errors with stubs. It does not play audio or download sound packs. Build locally with `sh scripts/build/install.sh`. Cargo dependencies are pinned in `Cargo.lock`.
 
 ## License
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and [SECURITY.md](SECURITY.md) for vulnerability reporting. Sprite-renderer provenance is recorded in [vendor/sprite/ORIGIN.md](vendor/sprite/ORIGIN.md).
 
 Original project code is licensed under the [MIT License](LICENSE). Third-party code and media retain their own terms; this license does not grant rights to game assets, downloaded themes, or other third-party content.

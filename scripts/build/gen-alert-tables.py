@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Generate sounds/alerts-generated.zsh from sounds/packs.json.
+"""Generate generated/alerts.zsh from data/packs.json.
 
-The hook never parses the JSON. alert-hook.sh is spawned once per status change
-on every pane — nine agents produce a steady trickle of them — and it already
-pays two `jq` execs to read the event. Resolving an alert name the same way
-would add several more to a path whose entire job is to be quick and quiet. A
-sourced `case` table costs no subprocess at all.
+The hook never parses the JSON. The pane status hook is spawned once per status
+change on every pane — nine agents produce a steady trickle of them — and it
+already pays two `jq` execs to read the event. Resolving an alert name the same
+way would add several more to a path whose entire job is to be quick and quiet.
+A sourced `case` table costs no subprocess at all.
 
 The Python fetchers and herdr-sounds-sync do read packs.json directly, and that
 is the point of generating rather than keeping a second table by hand: the
@@ -24,14 +24,15 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_JSON = HERE.parent / "sounds" / "packs.json"
-DEFAULT_OUT = HERE.parent / "sounds" / "alerts-generated.zsh"
+ROOT = HERE.parents[1]
+DEFAULT_JSON = ROOT / "data" / "packs.json"
+DEFAULT_OUT = ROOT / "generated" / "alerts.zsh"
 
-HEADER = """# alerts-generated.zsh — GENERATED from sounds/packs.json. Do not edit.
-# Regenerate with scripts/gen-alert-tables.py; the plugin's [[build]] step does.
+HEADER = """# GENERATED from data/packs.json — DO NOT EDIT.
+# Regenerate with scripts/build/gen-alert-tables.py; the plugin's [[build]] step does.
 #
-# Sourced by alert-hook.sh. Committed rather than built on demand so a checkout
-# that was linked instead of installed — no [[build]] run — still has a table.
+# Sourced by hooks/on-pane-agent-status-changed-alert.zsh. Committed rather than
+# built on demand so a linked checkout with no [[build]] run still has a table.
 """
 
 
@@ -93,7 +94,7 @@ def main() -> int:
         # otherwise show up as a procedural disc instead of a tank.
         if game == "redalert" and sprite and sprite not in ra_sprites:
             raise ValueError(f"alert '{name}': sprite '{sprite}' is not built "
-                             f"by fetch-redalert-sprites.py")
+                             f"by scripts/dev/fetch-redalert-sprites.py")
         rows.append((name, game, clip, sprite))
 
     for state, name in states.items():
@@ -123,7 +124,7 @@ def main() -> int:
     lines += ["    *) return 1 ;;", "  esac", "}", ""]
     parts.append("\n".join(lines))
 
-    lines = ["# Every name, for `alert-hook.sh --list` and for tab completion.",
+    lines = ["# Every name, for the hook's `--list` mode and for tab completion.",
              "__herdr_alert_names() {",
              f"  print -r -- {q(' '.join(n for n, _, _, _ in rows))}",
              "}", ""]

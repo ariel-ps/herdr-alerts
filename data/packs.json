@@ -1,10 +1,10 @@
 {
   "_comment": [
     "Single source for what an alert sounds and looks like.",
-    "The hook does not read this at runtime: scripts/gen-alert-tables.py turns it",
-    "into sounds/alerts-generated.zsh, which alert-hook.sh sources. The Python",
-    "fetchers and herdr-sounds-sync read this file directly. Edit here, then",
-    "regenerate — the plugin's [[build]] step does it on install."
+    "The hook does not read this at runtime: scripts/build/gen-alert-tables.py",
+    "turns it into generated/alerts.zsh, which the event hook sources. The",
+    "Python fetchers and herdr-sounds-sync read this file directly. Edit here,",
+    "then regenerate — the plugin's [[build]] step does it on install."
   ],
 
   "games": {

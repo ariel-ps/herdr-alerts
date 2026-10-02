@@ -74,7 +74,7 @@ struct Catalog {
 impl Catalog {
     fn load(root: &Path) -> Result<Self> {
         let data =
-            serde_json::from_slice(&fs::read(root.join("sounds/packs.json")).map_err(failure)?)
+            serde_json::from_slice(&fs::read(root.join("data/packs.json")).map_err(failure)?)
                 .map_err(failure)?;
         Ok(Self {
             data,
@@ -182,7 +182,7 @@ impl Catalog {
             if game == "redalert" {
                 command
                     .args(["--with", "pycryptodome", "python"])
-                    .arg(root.join("scripts/fetch-redalert-sounds.py"));
+                    .arg(root.join("libexec/fetch-redalert-sounds.py"));
             } else {
                 let source = packs[game]["sounds"].as_str().unwrap();
                 let identifier = source
@@ -190,7 +190,7 @@ impl Catalog {
                     .ok_or_else(|| failure(format!("unsupported source: {source}")))?;
                 command
                     .arg("python")
-                    .arg(root.join("scripts/fetch-game-sounds.py"))
+                    .arg(root.join("libexec/fetch-game-sounds.py"))
                     .arg(identifier);
             }
             if !command
@@ -393,7 +393,7 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             let path = if let Some(name) = args.get(1) {
                 Catalog::load(&root)?.resolve(name)?
             } else {
-                root.join("sounds/8bit-alert.wav")
+                root.join("assets/audio/8bit-alert.wav")
             };
             println!(
                 "Playing {}...",
@@ -476,7 +476,7 @@ mod tests {
     #[test]
     fn catalog_preserves_mood_and_sprite_clip_mappings() {
         let catalog = Catalog {
-            data: serde_json::from_str(include_str!("../sounds/packs.json")).unwrap(),
+            data: serde_json::from_str(include_str!("../data/packs.json")).unwrap(),
             cache: PathBuf::new(),
         };
         assert_eq!(catalog.alert("tesla").unwrap(), ("redalert", "TSLACHG2"));

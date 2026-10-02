@@ -13,9 +13,10 @@
 # write the colour to that one pane's pty, the way herdr-colorize does, and one
 # pane out of nine lights up rather than the whole window.
 #
-# The clip is not hardcoded. sounds/packs.json names a set of alerts — a game,
+# The clip is not hardcoded. data/packs.json names a set of alerts — a game,
 # which clip inside it, and the sprite that belongs with that clip — and
-# scripts/gen-alert-tables.py turns that into the case table sourced below, so
+# scripts/build/gen-alert-tables.py turns that into the case table sourced
+# below, so
 # the pairing is written once in the file that also says where the media comes
 # from. Nothing here parses JSON: this runs once per status change on every
 # pane, and it already pays two `jq` execs to read the event.
@@ -44,9 +45,9 @@
 emulate -L zsh
 setopt pipefail
 
-# HERDR_PLUGIN_ROOT is set by herdr; the ${0:A:h} fallback keeps the hook
+# HERDR_PLUGIN_ROOT is set by herdr; the ${0:A:h:h} fallback keeps the hook
 # runnable by hand, which is how it gets tested.
-root="${HERDR_PLUGIN_ROOT:-${0:A:h}}"
+root="${HERDR_PLUGIN_ROOT:-${0:A:h:h}}"
 
 # Sounds are overridable so a user can bring their own without editing the
 # plugin. Anything unreadable falls through to the bundled pair.
@@ -56,7 +57,7 @@ config="${HERDR_PLUGIN_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/plugi
 
 # Generated, and absent on a checkout that never ran the build step — hence the
 # `typeset -f` guards below rather than a hard require.
-[[ -r "$root/sounds/alerts-generated.zsh" ]] && source "$root/sounds/alerts-generated.zsh"
+[[ -r "$root/generated/alerts.zsh" ]] && source "$root/generated/alerts.zsh"
 
 # Same tree the fetchers write into: sounds/<game>/, sprites/<game>/.
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit"
@@ -107,9 +108,9 @@ pane=$(print -r -- "${HERDR_PLUGIN_EVENT_JSON:-}" | jq -r '.pane_id // empty' 2>
 # fire constantly and would turn the alert into noise nobody reacts to.
 case "$state" in
   blocked) name="${HERDR_ALERT_BLOCKED:-}"; override="${HERDR_SOUND_BLOCKED:-}"
-           sound="$root/sounds/8bit-alert.wav"; vol="${HERDR_VOLUME_BLOCKED:-1.8}" ;;
+           sound="$root/assets/audio/8bit-alert.wav"; vol="${HERDR_VOLUME_BLOCKED:-1.8}" ;;
   done)    name="${HERDR_ALERT_DONE:-}";    override="${HERDR_SOUND_DONE:-}"
-           sound="$root/sounds/8bit-alert.wav"; vol="${HERDR_VOLUME_DONE:-1.0}" ;;
+           sound="$root/assets/audio/8bit-alert.wav"; vol="${HERDR_VOLUME_DONE:-1.0}" ;;
   *)       exit 0 ;;
 esac
 
@@ -174,7 +175,7 @@ if [[ "${HERDR_ALERT_FLASH:-1}" == 1 && -n "$pane" ]]; then
         | jq -r '.result.process_info.shell_pid // empty')
       if [[ -n "$shell_pid" ]]; then
         tty=$(ps -o tty= -p "$shell_pid" 2>/dev/null | tr -d ' ')
-        sprite="$root/vendor/sprite.pl"
+        sprite="$root/vendor/sprite/sprite.pl"
         cols=$(stty size < "/dev/$tty" 2>/dev/null | awk '{print $2}')
         if [[ -n "$tty" && -w "/dev/$tty" && -r "$sprite" && -n "$cols" ]]; then
           # sprite.pl defaults SPRITE_DIR to the dotfiles cache it was vendored
@@ -198,6 +199,6 @@ if [[ "${HERDR_ALERT_FLASH:-1}" == 1 && -n "$pane" ]]; then
   ) &!
 fi
 
-[[ -r "$sound" ]] && sh "$root/bin/herdr-play-sound" "$sound" "$vol" "${HERDR_ALERT_MAX_SECONDS:-}" &!
+[[ -r "$sound" ]] && sh "$root/libexec/herdr-play-sound" "$sound" "$vol" "${HERDR_ALERT_MAX_SECONDS:-}" &!
 
 exit 0
