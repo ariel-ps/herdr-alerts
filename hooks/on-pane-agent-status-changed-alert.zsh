@@ -122,7 +122,7 @@ fi
 # Flash first so the light and the sound land together rather than in sequence.
 if [[ "${HERDR_ALERT_FLASH:-1}" == 1 && -n "$pane" ]]; then
   (
-    zsh "$root/libexec/herdr-flash-pane" "$pane" "$state" || exit $?
+    zsh "$root/libexec/herdr-flash" "$pane" "$state" || exit $?
 
     # Sprite after the wash rather than under it: both are layers now, and the
     # sprite is the one worth looking at. Only for blocked — it runs about a

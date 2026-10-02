@@ -5,10 +5,32 @@ setopt pipefail
 
 pane=${1:-}
 state=${2:-done}
-if [[ $# -gt 2 || -z "$pane" || "$pane" == *[^a-zA-Z0-9_-]* || ( "$state" != done && "$state" != blocked ) ]]; then
+if [[ $# -gt 2 || "$pane" == *[^a-zA-Z0-9_-]* || ( "$state" != done && "$state" != blocked ) ]]; then
   print -u2 -- 'herdr-sound: flash requires a valid pane ID and done or blocked state.'
   exit 2
 fi
+
+# No Herdr pane: let terminfo flash the calling terminal without changing its
+# palette. /dev/tty keeps escape sequences out of redirected command output.
+if [[ -z "$pane" ]]; then
+  command -v tput >/dev/null 2>&1 || {
+    print -u2 -- 'herdr-sound: terminal flashes require tput (ncurses).'
+    exit 1
+  }
+  if ! { exec 3>/dev/tty; } 2>/dev/null; then
+    print -u2 -- 'herdr-sound: --flash needs an interactive terminal; omit it for audio-only jobs.'
+    exit 1
+  fi
+  for _ in 1 2; do
+    tput flash >&3 || {
+      print -u2 -- 'herdr-sound: this TERM has no visual-bell capability. Check TERM or use sound-only playback.'
+      exit 1
+    }
+    sleep 0.12
+  done
+  exit 0
+fi
+
 for dependency in jq nc perl; do
   command -v "$dependency" >/dev/null 2>&1 || {
     print -u2 -- "herdr-sound: $dependency is required for pane flashes."

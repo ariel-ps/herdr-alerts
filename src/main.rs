@@ -23,7 +23,7 @@ const HELP: &str = "Herdr Sound — alerts for your coding agents.
 Usage: herdr-sound COMMAND [OPTIONS]
 
 Commands:
-  play [NAME] [--flash] Preview a sound; optionally flash the current Herdr pane
+  play [NAME] [--flash] Preview a sound; optionally flash the calling terminal
   list                  Browse sounds and download availability
   download [PACK ...]   Download selected packs, or all sound packs
   set blocked|done NAME Choose an automatic alert sound
@@ -394,13 +394,12 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             }
             let pane = env::var("HERDR_PANE_ID").unwrap_or_default();
             if flash
-                && (pane.is_empty()
-                    || !pane
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+                && !pane
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
             {
                 return Err(failure(
-                    "--flash requires a Herdr pane. Run this command inside Herdr.",
+                    "invalid HERDR_PANE_ID; unset it when running outside Herdr.",
                 ));
             }
             let config = settings::Config::load(&root)?;
@@ -414,7 +413,7 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             let mut visual = if flash {
                 Some(
                     Command::new("zsh")
-                        .arg(root.join("libexec/herdr-flash-pane"))
+                        .arg(root.join("libexec/herdr-flash"))
                         .arg(&pane)
                         .spawn()
                         .map_err(failure)?,
@@ -434,7 +433,7 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                 .map_err(failure)?;
             audio?;
             if visual.is_some_and(|status| !status.success()) {
-                return Err(failure("pane flash did not complete"));
+                return Err(failure("flash did not complete"));
             }
             Ok(())
         }

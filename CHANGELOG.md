@@ -7,7 +7,9 @@ All notable changes to Herdr Alerts are documented here.
 ### Added
 
 - `herdr-sound play [NAME] --flash` and `alert8play [NAME] --flash` preview
-  sound with two green flashes in the current Herdr pane.
+  sound with two terminal flashes, or green pane flashes when inside Herdr.
+- Terminal previews work without a running Herdr instance and keep escape
+  sequences out of redirected logs.
 - Manual previews and automatic alerts share pane-flash rendering, with
   connection/error checks and a final cleanup attempt.
 

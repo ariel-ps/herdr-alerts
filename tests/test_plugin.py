@@ -10,6 +10,11 @@ import tomllib
 import base64
 import socket
 import threading
+import errno
+import pty
+import select
+import signal
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -143,6 +148,7 @@ exit "${PLAYBACK_EXIT:-0}"
             assert recorded.read_text().splitlines()[0] == str(clip)
             assert invoke(extra_env={'PLAYBACK_EXIT': '7'}).returncode == 7
             recorded.unlink()
+
             result = invoke('list', command='herdr-sound')
             assert result.returncode == 0, result.stderr
             rows = {line.split()[0]: line.split()[2] for line in result.stdout.split('\n\n')[0].splitlines()[1:]}
@@ -277,7 +283,7 @@ def check_flashes():
             ([str(ROOT / 'bin/alert8play'), '--flash'], False, '0', [60, 220, 130, 80]),
             ([binary, 'play', '--flash'], True, '0', [60, 220, 130, 80]),
             ([binary, 'play', '--flash'], False, '7', [60, 220, 130, 80]),
-            (['zsh', str(ROOT / 'libexec/herdr-flash-pane'), 'pane-123', 'blocked'], False, '0', [255, 60, 60, 90]),
+            (['zsh', str(ROOT / 'libexec/herdr-flash'), 'pane-123', 'blocked'], False, '0', [255, 60, 60, 90]),
         ]:
             requests = []
             errors = []
@@ -314,10 +320,10 @@ def check_flashes():
                 assert params['z_index'] == 9
             if reject:
                 assert 'kitty_graphics' in result.stderr
-        for pane in ['', 'bad"pane']:
+        for pane in ['bad"pane']:
             result = subprocess.run([binary, 'play', '--flash'], env={**env, 'HERDR_PANE_ID': pane},
                                     text=True, capture_output=True)
-            assert result.returncode == 1 and 'inside Herdr' in result.stderr
+            assert result.returncode == 1 and 'invalid HERDR_PANE_ID' in result.stderr
         result = subprocess.run([binary, 'play', '--flash'], env=env, text=True, capture_output=True)
         assert result.returncode == 1 and 'socket not found' in result.stderr
         for args in [['play', '--flash', '--flash'], ['--alert8play', '--list', '--flash']]:
@@ -325,8 +331,74 @@ def check_flashes():
             assert result.returncode == 2, result.stderr
 
 
+def check_terminal_flashes():
+    # Run in a real controlling PTY with no Herdr, and redirect stdout to a log.
+    with tempfile.TemporaryDirectory(prefix='terminal-flash-') as temporary:
+        home = Path(temporary)
+        player = home / 'afplay'
+        player.write_text('#!/bin/sh\nexit "${PLAYBACK_EXIT:-0}"\n')
+        player.chmod(0o755)
+        env = {**os.environ, 'HOME': temporary, 'XDG_CONFIG_HOME': temporary,
+               'HERDR_PLUGIN_CONFIG_DIR': '', 'HERDR_PLUGIN_ROOT': str(ROOT),
+               'HERDR_PANE_ID': '', 'PATH': temporary + ':' + os.environ['PATH']}
+        for shell, command, term, audio_exit in [
+            ('bash', 'alert8play', 'xterm-256color', '0'),
+            ('zsh', 'herdr-sound', 'xterm-256color', '7'),
+            ('bash', 'alert8play', 'dumb', '0'),
+        ]:
+            log = home / 'output.log'
+            pid, terminal = pty.fork()
+            if pid == 0:
+                with log.open('w') as output:
+                    os.dup2(output.fileno(), 1)
+                args = [str(ROOT / 'bin' / command)]
+                if command == 'herdr-sound':
+                    args.append('play')
+                args.append('--flash')
+                os.execvpe(shell, [shell, '-fc', '"$@"', 'check', *args],
+                           {**env, 'TERM': term, 'PLAYBACK_EXIT': audio_exit})
+            captured = b''
+            reaped = False
+            deadline = time.monotonic() + 10
+            try:
+                while True:
+                    remaining = deadline - time.monotonic()
+                    assert remaining > 0 and select.select([terminal], [], [], remaining)[0], 'flash timed out'
+                    try:
+                        data = os.read(terminal, 65536)
+                    except OSError as exc:
+                        if exc.errno == errno.EIO:
+                            break
+                        raise
+                    if not data:
+                        break
+                    captured += data
+                _, status = os.waitpid(pid, 0)
+                reaped = True
+            finally:
+                os.close(terminal)
+                if not reaped:
+                    os.kill(pid, signal.SIGKILL)
+                    os.waitpid(pid, 0)
+            assert os.waitstatus_to_exitcode(status) == (1 if term == 'dumb' else int(audio_exit)), captured
+            assert '\033' not in log.read_text(), log.read_text()
+            assert 'Playing included tone' in log.read_text()
+            if term == 'dumb':
+                assert b'no visual-bell capability' in captured, captured
+            else:
+                assert captured.count(b'\x1b[?5h') == 2, captured
+                assert captured.count(b'\x1b[?5l') == 2, captured
+                assert captured.rfind(b'\x1b[?5l') > captured.rfind(b'\x1b[?5h'), captured
+        result = subprocess.run([str(ROOT / 'bin/alert8play'), '--flash'],
+                                env={**env, 'TERM': 'xterm-256color'}, start_new_session=True,
+                                text=True, capture_output=True)
+        assert result.returncode == 1 and 'interactive terminal' in result.stderr, result.stderr
+        assert '\033' not in result.stdout + result.stderr
+
+
 if __name__ == '__main__':
     subprocess.run(['sh', str(ROOT / 'scripts/build/install.sh')], check=True)
     check()
     check_player_errors()
     check_flashes()
+    check_terminal_flashes()
