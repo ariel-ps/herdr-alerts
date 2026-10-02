@@ -4,6 +4,13 @@ All notable changes to Herdr Alerts are documented here.
 
 ## Unreleased
 
+### Added
+
+- `herdr-sound play [NAME] --flash` and `alert8play [NAME] --flash` preview
+  sound with two green flashes in the current Herdr pane.
+- Manual previews and automatic alerts share pane-flash rendering, with
+  connection/error checks and a final cleanup attempt.
+
 ### Changed
 
 - Replaced the Python sound CLI and shell audio backend with Rust.

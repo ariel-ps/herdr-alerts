@@ -7,6 +7,9 @@ import subprocess
 import tempfile
 import sys
 import tomllib
+import base64
+import socket
+import threading
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -255,7 +258,75 @@ def check_player_errors():
                 assert error in result.stderr and 'playback failed' in result.stderr
 
 
+def check_flashes():
+    # A real Unix socket exercises the shared flash helper without a live pane.
+    with tempfile.TemporaryDirectory(prefix='flash-', dir='/tmp') as temporary:
+        home = Path(temporary)
+        config = home / 'herdr'
+        config.mkdir()
+        (config / 'config.sh').write_text('HERDR_ALERT_OFF=1\nHERDR_ALERT_FLASH=0\n')
+        audio = home / 'afplay'
+        audio.write_text('#!/bin/sh\nexit "${PLAYBACK_EXIT:-0}"\n')
+        audio.chmod(0o755)
+        env = {**os.environ, 'HOME': temporary, 'XDG_CONFIG_HOME': temporary,
+               'HERDR_PLUGIN_CONFIG_DIR': str(config), 'HERDR_PLUGIN_ROOT': str(ROOT),
+               'HERDR_PANE_ID': 'pane-123', 'PATH': temporary + ':' + os.environ['PATH']}
+        binary = str(ROOT / 'libexec/herdr-sound')
+        for command, reject, audio_exit, rgba in [
+            ([str(ROOT / 'bin/herdr-sound'), 'play', '--flash'], False, '0', [60, 220, 130, 80]),
+            ([str(ROOT / 'bin/alert8play'), '--flash'], False, '0', [60, 220, 130, 80]),
+            ([binary, 'play', '--flash'], True, '0', [60, 220, 130, 80]),
+            ([binary, 'play', '--flash'], False, '7', [60, 220, 130, 80]),
+            (['zsh', str(ROOT / 'libexec/herdr-flash-pane'), 'pane-123', 'blocked'], False, '0', [255, 60, 60, 90]),
+        ]:
+            requests = []
+            errors = []
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                server.bind(str(config / 'herdr.sock'))
+                server.listen()
+                server.settimeout(10)
+                def serve():
+                    try:
+                        for _ in range(2 if reject else 5):
+                            connection, _ = server.accept()
+                            with connection:
+                                connection.settimeout(5)
+                                request = json.loads(connection.makefile('rb').readline())
+                                requests.append(request)
+                                reply = {'error': {'message': 'graphics disabled'}} if reject else {'result': {}}
+                                connection.sendall((json.dumps(reply) + '\n').encode())
+                    except Exception as exc:
+                        errors.append(exc)
+                worker = threading.Thread(target=serve)
+                worker.start()
+                result = subprocess.run(command, env={**env, 'PLAYBACK_EXIT': audio_exit},
+                                        text=True, capture_output=True, timeout=20)
+                worker.join(timeout=12)
+                assert not worker.is_alive() and not errors, errors
+            (config / 'herdr.sock').unlink()
+            assert result.returncode == (1 if reject else int(audio_exit)), result.stderr
+            assert requests[-1]['method'] == 'pane.graphics.clear', requests
+            flashes = [r['params'] for r in requests if r['method'] == 'pane.graphics.set']
+            assert len(flashes) == (1 if reject else 2), requests
+            for params in flashes:
+                assert params['pane_id'] == 'pane-123'
+                assert base64.b64decode(params['data_base64']) == bytes(rgba) * 64
+                assert params['z_index'] == 9
+            if reject:
+                assert 'kitty_graphics' in result.stderr
+        for pane in ['', 'bad"pane']:
+            result = subprocess.run([binary, 'play', '--flash'], env={**env, 'HERDR_PANE_ID': pane},
+                                    text=True, capture_output=True)
+            assert result.returncode == 1 and 'inside Herdr' in result.stderr
+        result = subprocess.run([binary, 'play', '--flash'], env=env, text=True, capture_output=True)
+        assert result.returncode == 1 and 'socket not found' in result.stderr
+        for args in [['play', '--flash', '--flash'], ['--alert8play', '--list', '--flash']]:
+            result = subprocess.run([binary, *args], env=env, text=True, capture_output=True)
+            assert result.returncode == 2, result.stderr
+
+
 if __name__ == '__main__':
     subprocess.run(['sh', str(ROOT / 'scripts/build/install.sh')], check=True)
     check()
     check_player_errors()
+    check_flashes()

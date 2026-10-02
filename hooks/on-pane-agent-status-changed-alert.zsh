@@ -6,12 +6,8 @@
 # with a flash on the pane that wants attention, and a sprite on the one event
 # that needs a human.
 #
-# It cannot call those functions directly. Both flash through `flash-term`,
-# which locates the GUI terminal by walking process ancestry; a hook is spawned
-# by the herdr server, whose ancestry is the server, so the flash would land
-# somewhere else or nowhere. Under herdr the right target is narrower anyway:
-# write the colour to that one pane's pty, the way herdr-colorize does, and one
-# pane out of nine lights up rather than the whole window.
+# The shared flash helper targets the event's pane through Herdr graphics,
+# so one pane lights up rather than the whole terminal window.
 #
 # The clip is not hardcoded. data/packs.json names a set of alerts — a game,
 # which clip inside it, and the sprite that belongs with that clip — and
@@ -37,10 +33,9 @@
 #   HERDR_ALERT_MAX_SECONDS     cap a clip, default 3, empty plays it in full
 #   SPRITE_NAME=<name>          override the sprite the alert chose
 #
-# Run by hand to hear what a name is before committing to it. Neither mode
-# touches a pane — auditioning a clip should not need a live agent to block:
+# Manual previews play sound only unless --flash is requested:
 #   herdr-sound list
-#   herdr-sound play tesla
+#   herdr-sound play tesla --flash
 
 emulate -L zsh
 setopt pipefail
@@ -124,48 +119,10 @@ else
   __herdr_alert_resolve "$name"
 fi
 
-# An 8x8 solid RGBA wash at ~35% alpha, generated rather than inlined: the
-# encoded form is 344 characters of base64, and a literal that long is a copy
-# error waiting to happen — one truncated paste already shipped a 264-character
-# string that herdr rejected as invalid_image with the flash silently dead.
-# perl is already required here for the sprite and MIME::Base64 is core.
-__herdr_alert_rgba() {
-  perl -MMIME::Base64 -e 'print encode_base64(pack("C4", @ARGV) x 64, "")' "$@"
-}
-
-# One JSON object per line over the pane socket. No token, no websocket.
-__herdr_alert_rpc() {
-  printf '%s\n' "$1" | nc -U "${XDG_CONFIG_HOME:-$HOME/.config}/herdr/herdr.sock" >/dev/null 2>&1
-}
-
 # Flash first so the light and the sound land together rather than in sequence.
 if [[ "${HERDR_ALERT_FLASH:-1}" == 1 && -n "$pane" ]]; then
   (
-    # A translucent wash composited over the pane, not OSC 11 on its pty.
-    #
-    # OSC 11 sets the terminal's default background, which a full-screen agent
-    # never shows: Claude and Codex paint their own background across the whole
-    # viewport, so the pane looks identical before and after. It flashes a bare
-    # shell and silently does nothing to the panes that actually block. Pane
-    # graphics composite above the cells instead, which is the same reason
-    # kitty-sprite.pl draws at z=1, and herdr clips the placement to the pane —
-    # hence grid numbers larger than any pane rather than querying its size.
-    if [[ "$state" == done ]]; then
-      px=$(__herdr_alert_rgba 60 220 130 80)
-    else
-      px=$(__herdr_alert_rgba 255 60 60 90)
-    fi
-    [[ -n "$px" ]] || exit 0
-
-    for _ in 1 2; do
-      __herdr_alert_rpc "{\"id\":\"flash\",\"method\":\"pane.graphics.set\",\"params\":{\"pane_id\":\"$pane\",\"format\":\"rgba\",\"image_width\":8,\"image_height\":8,\"data_base64\":\"$px\",\"layer_id\":\"alert\",\"z_index\":9,\"placement\":{\"viewport_col\":0,\"viewport_row\":0,\"grid_cols\":400,\"grid_rows\":200}}}"
-      sleep 0.18
-      __herdr_alert_rpc "{\"id\":\"clear\",\"method\":\"pane.graphics.clear\",\"params\":{\"pane_id\":\"$pane\",\"layer_id\":\"alert\"}}"
-      sleep 0.12
-    done
-    # Belt and braces: a wash left behind would sit over the pane forever, and
-    # this layer is ours alone, so clearing twice costs nothing.
-    __herdr_alert_rpc "{\"id\":\"clear\",\"method\":\"pane.graphics.clear\",\"params\":{\"pane_id\":\"$pane\",\"layer_id\":\"alert\"}}"
+    zsh "$root/libexec/herdr-flash-pane" "$pane" "$state" || exit $?
 
     # Sprite after the wash rather than under it: both are layers now, and the
     # sprite is the one worth looking at. Only for blocked — it runs about a

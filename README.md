@@ -6,6 +6,7 @@ Herdr Alerts plays a sound and flashes the affected pane when an agent finishes 
 
 ```sh
 herdr-sound play                  # Test your speakers
+herdr-sound play --flash          # Also flash the current Herdr pane
 herdr-sound download mario       # Get a sound pack
 herdr-sound set done 1up         # Use it when an agent finishes
 ```
@@ -50,13 +51,15 @@ herdr-sound download redalert
 herdr-sound set blocked tesla
 ```
 
-Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Manual previews play sound only; automatic alerts also flash the pane and can show sprites when the corresponding assets are available.
+Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Automatic alerts also flash the pane and can show sprites when the corresponding assets are available.
+
+To preview sound with two green flashes, run `herdr-sound play --flash` inside a Herdr pane. Named sounds also work: `herdr-sound play 1up --flash`. This requires `experimental.kitty_graphics = true` in Herdr's configuration, which Setup enables for new configurations. Existing configurations may need it enabled manually. Explicit previews work even when automatic alerts are muted; they do not show sprites. Omit `--flash` for sound only.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `herdr-sound play [NAME]` | Preview a sound; omit NAME for the included tone |
+| `herdr-sound play [NAME] [--flash]` | Preview a sound; optionally flash the current Herdr pane |
 | `herdr-sound list` | Browse sounds and see which are ready |
 | `herdr-sound download [PACK ...]` | Download selected packs; omit PACK to download all sound packs |
 | `herdr-sound set blocked NAME` | Choose the needs-attention sound |
@@ -65,7 +68,7 @@ Choices apply to the next alert without restarting Herdr. Missing game sounds fa
 | `herdr-sound disable` | Mute automatic alerts; manual previews still work |
 | `herdr-sound status` | Show settings, sound availability, and audio backend |
 
-Run `herdr-sound COMMAND --help` for details. The aliases `sync`, `on`, and `off`, and the older `alert8play` and `herdr-sounds-sync` commands still work.
+Run `herdr-sound COMMAND --help` for details. The aliases `sync`, `on`, and `off`, and the older `alert8play` and `herdr-sounds-sync` commands still work. `alert8play [NAME] --flash` previews the same sound and pane effect.
 
 ## Settings
 

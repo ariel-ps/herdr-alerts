@@ -23,7 +23,7 @@ const HELP: &str = "Herdr Sound — alerts for your coding agents.
 Usage: herdr-sound COMMAND [OPTIONS]
 
 Commands:
-  play [NAME]           Preview a sound, or the included tone
+  play [NAME] [--flash] Preview a sound; optionally flash the current Herdr pane
   list                  Browse sounds and download availability
   download [PACK ...]   Download selected packs, or all sound packs
   set blocked|done NAME Choose an automatic alert sound
@@ -32,6 +32,7 @@ Commands:
 
 Quick start:
   herdr-sound play
+  herdr-sound play --flash
   herdr-sound download mario
   herdr-sound play 1up
   herdr-sound set done 1up
@@ -345,17 +346,11 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
 fn execute(mut args: Vec<String>) -> Result<()> {
     if args.first().is_some_and(|arg| arg == "--alert8play") {
         args.remove(0);
-        if args.len() > 1 {
-            return Err(usage("usage: alert8play [NAME | --list | --help]"));
-        }
         match args.first().map(String::as_str) {
-            Some("--list") => args = vec!["list".into()],
-            Some("--help" | "-h") => {
-                println!("usage: alert8play [NAME | --list | --help]\nCompatibility command for herdr-sound play.");
+            Some("--list") if args.len() == 1 => args = vec!["list".into()],
+            Some("--help" | "-h") if args.len() == 1 => {
+                println!("usage: alert8play [NAME] [--flash]\n       alert8play --list | --help\nCompatibility command for herdr-sound play.");
                 return Ok(());
-            }
-            Some(arg) if arg.starts_with('-') => {
-                return Err(usage(format!("unknown option: {arg}")))
             }
             _ => args.insert(0, "play".into()),
         }
@@ -385,26 +380,63 @@ fn execute(mut args: Vec<String>) -> Result<()> {
         other => other,
     };
     match command {
-        "play" if args.len() <= 2 => {
-            if args.get(1).is_some_and(|name| name.starts_with('-')) {
-                return Err(usage("play expects a sound name. Run herdr-sound list."));
+        "play" => {
+            let mut flash = false;
+            let mut name = None;
+            for arg in &args[1..] {
+                if arg == "--flash" && !flash {
+                    flash = true;
+                } else if !arg.starts_with('-') && name.is_none() {
+                    name = Some(arg.as_str());
+                } else {
+                    return Err(usage("usage: herdr-sound play [NAME] [--flash]"));
+                }
+            }
+            let pane = env::var("HERDR_PANE_ID").unwrap_or_default();
+            if flash
+                && (pane.is_empty()
+                    || !pane
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+            {
+                return Err(failure(
+                    "--flash requires a Herdr pane. Run this command inside Herdr.",
+                ));
             }
             let config = settings::Config::load(&root)?;
-            let path = if let Some(name) = args.get(1) {
+            let path = if let Some(name) = name {
                 Catalog::load(&root)?.resolve(name)?
             } else {
                 root.join("assets/audio/8bit-alert.wav")
             };
-            println!(
-                "Playing {}...",
-                args.get(1).map(String::as_str).unwrap_or("included tone")
-            );
+            println!("Playing {}...", name.unwrap_or("included tone"));
             let volume = config.get("HERDR_VOLUME_DONE");
-            play_file(
+            let mut visual = if flash {
+                Some(
+                    Command::new("zsh")
+                        .arg(root.join("libexec/herdr-flash-pane"))
+                        .arg(&pane)
+                        .spawn()
+                        .map_err(failure)?,
+                )
+            } else {
+                None
+            };
+            let audio = play_file(
                 &path,
                 if volume.is_empty() { "1.0" } else { volume },
                 config.get("HERDR_ALERT_MAX_SECONDS"),
-            )
+            );
+            let visual = visual
+                .as_mut()
+                .map(|child| child.wait())
+                .transpose()
+                .map_err(failure)?;
+            audio?;
+            if visual.is_some_and(|status| !status.success()) {
+                return Err(failure("pane flash did not complete"));
+            }
+            Ok(())
         }
         "list" if args.len() == 1 => Catalog::load(&root)?.list(),
         "status" if args.len() == 1 => status(

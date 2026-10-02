@@ -1,0 +1,52 @@
+#!/usr/bin/env zsh
+# Shared by automatic alerts and explicit sound previews.
+emulate -L zsh
+setopt pipefail
+
+pane=${1:-}
+state=${2:-done}
+if [[ $# -gt 2 || -z "$pane" || "$pane" == *[^a-zA-Z0-9_-]* || ( "$state" != done && "$state" != blocked ) ]]; then
+  print -u2 -- 'herdr-sound: flash requires a valid pane ID and done or blocked state.'
+  exit 2
+fi
+for dependency in jq nc perl; do
+  command -v "$dependency" >/dev/null 2>&1 || {
+    print -u2 -- "herdr-sound: $dependency is required for pane flashes."
+    exit 1
+  }
+done
+socket="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/herdr.sock"
+[[ -S "$socket" ]] || {
+  print -u2 -- 'herdr-sound: Herdr socket not found. Start Herdr before using --flash.'
+  exit 1
+}
+
+# Composite above terminal cells so full-screen agents also show the flash.
+rgba=(60 220 130 80)
+[[ "$state" == blocked ]] && rgba=(255 60 60 90)
+pixels=$(perl -MMIME::Base64 -e 'print encode_base64(pack("C4", @ARGV) x 64, "")' "${rgba[@]}") || exit 1
+set_request=$(jq -cn --arg pane "$pane" --arg pixels "$pixels" '{id:"flash",method:"pane.graphics.set",params:{pane_id:$pane,format:"rgba",image_width:8,image_height:8,data_base64:$pixels,layer_id:"alert",z_index:9,placement:{viewport_col:0,viewport_row:0,grid_cols:400,grid_rows:200}}}') || exit 1
+clear_request=$(jq -cn --arg pane "$pane" '{id:"clear",method:"pane.graphics.clear",params:{pane_id:$pane,layer_id:"alert"}}') || exit 1
+
+rpc() {
+  local reply
+  reply=$(printf '%s\n' "$1" | nc -w 2 -U "$socket") || return 1
+  print -r -- "$reply" | jq -e 'type == "object" and .error == null and has("result")' >/dev/null 2>&1
+}
+
+# Always attempt cleanup, including failed requests or interrupted playback.
+trap 'rpc "$clear_request" >/dev/null 2>&1' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+for _ in 1 2; do
+  rpc "$set_request" || {
+    print -u2 -- 'herdr-sound: pane flash failed. Check the pane and enable experimental.kitty_graphics in Herdr.'
+    exit 1
+  }
+  sleep 0.18
+  rpc "$clear_request" || {
+    print -u2 -- 'herdr-sound: could not clear the pane flash. Check the Herdr connection.'
+    exit 1
+  }
+  sleep 0.12
+done
