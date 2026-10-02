@@ -21,6 +21,22 @@ def check():
         assert result.returncode == 0, result.stderr
         assert 'tesla' in result.stdout
 
+        # Verify bash forwards literal arguments, cwd, and failures to the implementation.
+        commands = ["herdr-sounds-sync"]
+        (plugin / 'shell.zsh').write_text('\n'.join(
+            name + '() { printf "%s\\n" "$PWD" "${HERDR_AGENT_ARGS:-}" "$@"; return 7; }'
+            for name in commands))
+        arguments = ['two words', '$(touch unexpected)', '', '--option']
+        for command in commands:
+            result = subprocess.run(
+                ['bash', '--noprofile', '--norc', '-c',
+                 'source "$1/shell.bash"; shift; HERDR_AGENT_ARGS="two flags"; "$@"',
+                 'check', str(plugin), command, *arguments], cwd=home,
+                env={**os.environ, 'HOME': str(home)}, text=True, capture_output=True)
+            assert result.returncode == 7, result.stderr
+            assert result.stdout.splitlines() == [str(home.resolve()), os.environ.get('HERDR_AGENT_ARGS', ''), *arguments], result.stdout
+        assert not (home / 'unexpected').exists()
+
 
 if __name__ == '__main__':
     check()
