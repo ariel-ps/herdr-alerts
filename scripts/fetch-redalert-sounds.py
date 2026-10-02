@@ -7,7 +7,7 @@ file, and archive.org honours HTTP range requests. We read only the encrypted
 MIX headers, walk down to the nested MIXes that hold Westwood .AUD clips, and
 download just those (~7 MB of a 454 MB file). ffmpeg converts .AUD to .wav.
 
-Needs `pycryptodome` (Blowfish) and `ffmpeg` on PATH. Invoked by `alert8-sync`
+Needs `pycryptodome` (Blowfish) and `ffmpeg` on PATH. Invoked by `herdr-sound sync`
 as `uv run --no-project --with pycryptodome python fetch-redalert-sounds.py`.
 """
 

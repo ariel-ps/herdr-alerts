@@ -1,7 +1,6 @@
 #!/usr/bin/env zsh
 # Use the same playback and configuration as the status-alert hook.
 emulate -L zsh
-export HERDR_PLUGIN_ROOT="${0:A:h:h}"
 if (( $# > 1 )); then
   print -u2 'usage: alert8play [NAME | --list | --help]'
   exit 2
@@ -9,9 +8,9 @@ fi
 case "${1:-}" in
   -h|--help)
     print 'usage: alert8play [NAME | --list | --help]'
-    print 'No name plays the bundled sound. Download game sounds with herdr-sounds-sync.'
+    print 'Compatibility command for herdr-sound play. See herdr-sound --help.'
     ;;
-  --list) exec zsh "$HERDR_PLUGIN_ROOT/alert-hook.sh" --list ;;
+  --list) exec "${0:A:h}/herdr-sound" list ;;
   -*) print -u2 "alert8play: unknown option: $1"; exit 2 ;;
-  *) exec zsh "$HERDR_PLUGIN_ROOT/alert-hook.sh" --play "$@" ;;
+  *) exec "${0:A:h}/herdr-sound" play "$@" ;;
 esac

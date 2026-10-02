@@ -38,8 +38,8 @@
 #
 # Run by hand to hear what a name is before committing to it. Neither mode
 # touches a pane — auditioning a clip should not need a live agent to block:
-#   alert8play --list
-#   alert8play tesla
+#   herdr-sound list
+#   herdr-sound play tesla
 
 emulate -L zsh
 setopt pipefail
@@ -94,21 +94,59 @@ __herdr_alert_list() {
     echo "alert-hook: no alert table — run scripts/gen-alert-tables.py" >&2; return 1
   }
   local n alert_game alert_clip alert_sprite
+  printf "%-12s %-10s %-10s %s\n" NAME PACK STATUS CLIP
   for n in ${=$(__herdr_alert_names)}; do
     __herdr_alert_spec "$n" || continue
     # A blank clip column is not missing data: it is the entry saying "anything
     # from this game", which is all a pack of numbered clips can offer.
-    printf "%-12s %-10s %-22s %s\n" "$n" "$alert_game" "${alert_clip:-(any)}" "$alert_sprite"
+    local available=missing
+    __herdr_alert_resolve "$n" && available=ready
+    printf "%-12s %-10s %-10s %s\n" "$n" "$alert_game" "$available" "${alert_clip:-(any)}"
   done
+}
+
+__herdr_alert_status() {
+  local event key name override volume availability player
+  if [[ "${HERDR_ALERT_OFF:-}" == 1 ]]; then
+    print 'Automatic alerts: off'
+  else
+    print 'Automatic alerts: on (when the plugin is enabled)'
+  fi
+  print -r -- "Configuration: $config/config.sh"
+  for event in blocked done; do
+    key=HERDR_ALERT_${(U)event}; name=${(P)key}
+    key=HERDR_SOUND_${(U)event}; override=${(P)key}
+    key=HERDR_VOLUME_${(U)event}; volume=${(P)key}
+    [[ -n "$volume" ]] || { [[ "$event" == blocked ]] && volume=1.8 || volume=1.0; }
+    [[ -n "$name" ]] || name=$(__herdr_alert_for_state "$event")
+    if [[ -n "$override" && -r "$override" ]]; then
+      name=$override; availability='custom file'
+    elif __herdr_alert_resolve "$name"; then
+      availability=ready
+    else
+      availability='unavailable; using bundled tone'
+    fi
+    print -r -- "$event: $name ($availability), volume $volume"
+  done
+  print -r -- "Duration limit: ${HERDR_ALERT_MAX_SECONDS:-none}"
+  player=$(command -v afplay || command -v ffplay) || {
+    print -u2 'Audio player: missing. Install FFmpeg on Linux.'; return 1
+  }
+  print -r -- "Audio player: $player"
+  print 'Speakers not tested. Run herdr-sound play to test audio output.'
 }
 
 case "${1:-}" in
   --list) __herdr_alert_list; exit $? ;;
+  --status) __herdr_alert_status; exit $? ;;
   --play)
     sound="$root/sounds/8bit-alert.wav"
     if [[ -n "${2:-}" ]]; then
+      __herdr_alert_spec "$2" || {
+        print -u2 -- "herdr-sound: unknown sound '$2'. Run herdr-sound list."; exit 1
+      }
       __herdr_alert_resolve "$2" || {
-        echo "alert-hook: nothing to play for '$2' — unknown name, or that game is not synced (herdr-sounds-sync)" >&2
+        print -u2 -- "herdr-sound: no cached sound for '$2'. Run herdr-sound sync $alert_game."
         exit 1
       }
     fi

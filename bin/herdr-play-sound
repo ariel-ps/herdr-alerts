@@ -4,16 +4,30 @@ set -eu
 sound=$1
 volume=${2:-1.0}
 duration=${3:-}
+[ -r "$sound" ] || { echo "herdr-sound: cannot read sound file: $sound" >&2; exit 1; }
 if command -v afplay >/dev/null 2>&1; then
     if [ -n "$duration" ]; then
         exec afplay -v "$volume" -t "$duration" "$sound"
     fi
     exec afplay -v "$volume" "$sound"
 elif command -v ffplay >/dev/null 2>&1; then
+    # ffplay can exit 0 after an audio-device failure; retain its error output.
+    error_log=$(mktemp)
+    trap 'rm -f "$error_log"' 0
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    set -- -nodisp -autoexit -nostats -loglevel error -af "volume=$volume"
     if [ -n "$duration" ]; then
-        exec ffplay -nodisp -autoexit -loglevel error -af "volume=$volume" -t "$duration" "$sound"
+        set -- "$@" -t "$duration"
     fi
-    exec ffplay -nodisp -autoexit -loglevel error -af "volume=$volume" "$sound"
+    result=0
+    ffplay "$@" -i "$sound" 2>"$error_log" || result=$?
+    if [ "$result" -ne 0 ] || [ -s "$error_log" ]; then
+        cat "$error_log" >&2
+        echo 'herdr-sound: playback failed. Check your audio output and that other apps can play sound.' >&2
+        [ "$result" -ne 0 ] || result=1
+    fi
+    exit "$result"
 fi
-echo 'herdr-kit: install ffmpeg for Linux audio alerts.' >&2
+echo 'herdr-sound: no audio player found. Install FFmpeg on Linux.' >&2
 exit 1

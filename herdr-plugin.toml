@@ -15,10 +15,10 @@ command = ["zsh","./alert-hook.sh"]
 [[actions]]
 id = "alerts"
 title = "List the named alerts"
-command = ["zsh","./alert-hook.sh","--list"]
+command = ["./bin/herdr-sound","list"]
 
 [[actions]]
 id = "play"
 title = "Preview alert sound"
-command = ["./bin/alert8play"]
+command = ["./bin/herdr-sound","play"]
 contexts = ["pane", "workspace"]

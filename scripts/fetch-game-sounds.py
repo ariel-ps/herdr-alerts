@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Download an archive.org item's sound effects into a local cache dir.
 
-Used by the `alert8-sync` shell helper to populate
+Used by `herdr-sound sync` to populate
   ${XDG_CACHE_HOME:-~/.cache}/herdr-kit/sounds/<game>/
-with 8-bit game sound files, later played at random by `alert8play`.
+with game sound files for alerts and manual previews.
 
 Picks ONE audio format per item (prefers wav > mp3 > ogg) so we don't download
 the same clip three times. Idempotent: files already present with a matching

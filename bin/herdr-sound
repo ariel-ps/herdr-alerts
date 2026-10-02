@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Play, download, and configure Herdr alert sounds."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+BEGIN = '# >>> herdr-sound >>>'
+END = '# <<< herdr-sound <<<'
+
+
+def save_settings(updates):
+    directory = Path(os.environ.get('HERDR_PLUGIN_CONFIG_DIR') or
+                     str(Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') /
+                         'herdr/plugins/config/dev.ariel.herdr-alerts'))
+    target = (directory / 'config.sh').resolve()
+    original = target.read_text() if target.exists() else (ROOT / 'config.sh').read_text()
+    if original.count(BEGIN) != original.count(END) or original.count(BEGIN) > 1:
+        raise ValueError(f'Malformed herdr-sound settings block in {target}; fix it before changing settings.')
+    body = ''
+    if BEGIN in original:
+        start, finish = original.index(BEGIN), original.index(END)
+        if finish < start:
+            raise ValueError(f'Reversed herdr-sound markers in {target}.')
+        body = original[start + len(BEGIN):finish].strip('\n')
+    for key, value in updates.items():
+        body = re.sub(r'^' + re.escape(key) + r'=.*(?:\n|$)', '', body, flags=re.M)
+        body = body.rstrip('\n') + '\n' + key + '=' + shlex.quote(value)
+    block = BEGIN + '\n' + body.strip('\n') + '\n' + END
+    if BEGIN in original:
+        updated = original[:start] + block + original[finish + len(END):]
+    else:
+        updated = original.rstrip('\n') + '\n\n' + block + '\n'
+    if target.exists() and original == updated:
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        backup = target.with_name(f'{target.name}.{time.time_ns()}.bak')
+        shutil.copy2(target, backup)
+        backup.chmod(0o600)
+    fd, temporary = tempfile.mkstemp(prefix='.herdr-sound-', dir=target.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(updated)
+        if target.exists():
+            os.chmod(temporary, target.stat().st_mode & 0o777)
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return target
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='command')
+    play = commands.add_parser('play', help='Preview a named sound, or the bundled tone')
+    play.add_argument('name', nargs='?')
+    commands.add_parser('list', help='List sounds and whether their pack is downloaded')
+    sync = commands.add_parser('sync', help='Download selected game packs, or all packs')
+    sync.add_argument('games', nargs='*')
+    commands.add_parser('on', help='Enable automatic alerts')
+    commands.add_parser('off', help='Mute automatic alerts (manual previews still work)')
+    commands.add_parser('status', help='Show sound settings and audio-player availability')
+    settings = commands.add_parser('set', help='Choose a sound for an automatic alert')
+    settings.add_argument('event', choices=['blocked', 'done'])
+    settings.add_argument('name')
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        return 0
+    env = {**os.environ, 'HERDR_PLUGIN_ROOT': str(ROOT)}
+    if args.command in ('play', 'list', 'status'):
+        extra = [args.name] if args.command == 'play' and args.name else []
+        return subprocess.call(['zsh', str(ROOT / 'alert-hook.sh'), '--' + args.command, *extra], env=env)
+    if args.command == 'sync':
+        packs = {name: spec for name, spec in json.loads((ROOT / 'sounds/packs.json').read_text())['games'].items()
+                 if isinstance(spec, dict) and spec.get('sounds')}
+        unknown = [name for name in args.games if name not in packs]
+        if unknown:
+            parser.error('Unknown game pack: ' + ', '.join(unknown) + '. Available: ' + ', '.join(packs))
+        return subprocess.call(['zsh', '-fc', 'source "$1/shell.zsh"; shift; __herdr_sounds_sync "$@"',
+                                'herdr-sound', str(ROOT), *(args.games or list(packs))], env=env)
+    if args.command == 'set':
+        alerts = json.loads((ROOT / 'sounds/packs.json').read_text())['alerts']
+        if not isinstance(alerts.get(args.name), dict) or 'game' not in alerts[args.name]:
+            parser.error(f'Unknown sound: {args.name}. Run herdr-sound list.')
+        # A literal file override otherwise takes priority over the chosen name.
+        updates = {f'HERDR_ALERT_{args.event.upper()}': args.name,
+                   f'HERDR_SOUND_{args.event.upper()}': ''}
+    else:
+        updates = {'HERDR_ALERT_OFF': '1' if args.command == 'off' else '0'}
+    target = save_settings(updates)
+    print(f'Saved: {target}')
+    if args.command == 'set':
+        print(f'{args.event}: {args.name}. If needed, download its pack with herdr-sound sync {alerts[args.name]["game"]}.')
+    else:
+        print('Automatic alerts: ' + args.command)
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (OSError, ValueError) as exc:
+        print(f'herdr-sound: {exc}', file=sys.stderr)
+        sys.exit(1)
