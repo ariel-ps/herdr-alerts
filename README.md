@@ -2,7 +2,7 @@
 
 **Hear when an agent finishes or needs your attention. See which pane needs you.**
 
-Herdr Alerts plays a sound and flashes the affected pane when an agent finishes or becomes blocked. An included tone works immediately; optional game packs let you choose your own alert sounds.
+Herdr Alerts plays a sound and flashes the affected pane when an agent finishes or becomes blocked. Its Rust CLI previews sounds and manages settings. An included tone works immediately; optional game packs let you choose your own alert sounds.
 
 ```sh
 herdr-sound play                  # Test your speakers
@@ -25,7 +25,7 @@ Open a new terminal, then run `herdr-sound play`. You should hear a short tone; 
 <details>
 <summary>Install only this plugin into an existing Herdr installation</summary>
 
-Requires Herdr 0.9.3+, Git, Python 3, zsh, and jq. Audio uses `afplay` on macOS or `ffplay` (FFmpeg) on Linux. Pane graphics use netcat and Perl with `MIME::Base64` and `JSON::PP`; sound-pack downloads also need uv.
+Requires Herdr 0.9.3+, Git, a stable Rust toolchain (Cargo and rustc), Python 3, zsh, and jq. Installation compiles the Rust CLI. Audio uses `afplay` on macOS or `ffplay` (FFmpeg) on Linux. Pane graphics use netcat and Perl with `MIME::Base64` and `JSON::PP`; optional sound-pack downloads use the existing Python fetchers through uv.
 
 ```sh
 herdr plugin install ariel-ps/herdr-alerts --ref main --yes
@@ -34,7 +34,7 @@ herdr plugin action invoke play --plugin dev.ariel.herdr-alerts
 
 The second command previews the included tone. In Herdr, you can also choose **Preview alert sound** from the plugin actions. Use a commit or release tag instead of `main` to pin a version.
 
-To use `herdr-sound` in your shell, source the installed plugin's `shell.bash` from `.bashrc`, or `shell.zsh` from `.zshrc`. These add its `bin` directory to `PATH`. Bash remains your shell; the plugin uses zsh internally. Herdr Setup configures this automatically.
+To use `herdr-sound` in your shell, source the installed plugin's `shell.bash` from `.bashrc`, or `shell.zsh` from `.zshrc`. These add its `bin` directory to `PATH`. Bash remains your shell. The Rust CLI uses zsh to read existing shell configuration, and the automatic pane hook remains a zsh script. Herdr Setup configures shell integration automatically.
 
 </details>
 
@@ -93,7 +93,13 @@ If a named sound is missing, run `herdr-sound download PACK` using the pack show
 
 ## Development
 
-Run `python3 tests/test_plugin.py`. Checks cover bash/zsh commands, settings, download dispatch, compatibility aliases, and playback errors using stubs. They do not play audio or download packs.
+```sh
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+python3 tests/test_plugin.py
+```
+
+The integration check compiles the Rust executable, then tests Bash/Zsh commands, settings, downloads, compatibility aliases, and playback errors with stubs. It does not play audio or download sound packs. Build locally with `sh scripts/build/install.sh`. Cargo dependencies are pinned in `Cargo.lock`.
 
 ## License
 

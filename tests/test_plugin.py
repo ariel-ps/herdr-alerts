@@ -14,7 +14,7 @@ def check():
     with tempfile.TemporaryDirectory(prefix='plugin user ') as temporary:
         home = Path(temporary)
         plugin = home / 'plugin copy'
-        shutil.copytree(ROOT, plugin, ignore=shutil.ignore_patterns('.git', '__pycache__'))
+        shutil.copytree(ROOT, plugin, ignore=shutil.ignore_patterns('.git', 'target', '__pycache__'))
         result = subprocess.run(
             ['zsh', '-fc', 'plugin=$1; source "$plugin/shell.zsh"; zsh "$plugin/alert-hook.sh" --list', 'check', str(plugin)],
             env={**os.environ, 'HOME': str(home), 'XDG_CONFIG_HOME': str(home / 'config'),
@@ -24,15 +24,34 @@ def check():
 
         # Exercise the installed command without sending sound to the host device.
         recorded = home / 'playback'
-        (plugin / 'bin/herdr-play-sound').write_text(
-            '#!/bin/sh\nprintf "%s\\n" "$@" > "$PLAYBACK_LOG"\nexit "${PLAYBACK_EXIT:-0}"\n')
+        audio = home / 'audio-tools'
+        audio.mkdir()
+        for player in ['afplay', 'ffplay']:
+            stub = audio / player
+            stub.write_text('''#!/bin/sh
+volume=1.0 duration=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -v) volume=$2; shift 2 ;;
+    -af) volume=${2#volume=}; shift 2 ;;
+    -t) duration=$2; shift 2 ;;
+    -i) sound=$2; shift 2 ;;
+    -*) shift ;;
+    *) sound=$1; shift ;;
+  esac
+done
+printf '%s\\n' "$sound" "$volume" "$duration" > "$PLAYBACK_LOG"
+exit "${PLAYBACK_EXIT:-0}"
+''')
+            stub.chmod(0o755)
         config = home / 'config/herdr/plugins/config/dev.ariel.herdr-alerts'
         config.mkdir(parents=True)
         initial_config = '# Keep this comment\nCUSTOM_SETTING=preserved\nHERDR_VOLUME_DONE=0.4\nHERDR_ALERT_MAX_SECONDS=0.5\nHERDR_ALERT_OFF=1\n'
         (config / 'config.sh').write_text(initial_config)
         env = {**os.environ, 'HOME': str(home), 'XDG_CONFIG_HOME': str(home / 'config'),
                'XDG_CACHE_HOME': str(home / 'cache'), 'PLAYBACK_LOG': str(recorded),
-               'HERDR_PLUGIN_CONFIG_DIR': '', 'HERDR_PLUGIN_ROOT': ''}
+               'HERDR_PLUGIN_CONFIG_DIR': '', 'HERDR_PLUGIN_ROOT': '',
+               'PATH': str(audio) + ':' + os.environ['PATH']}
         for shell, integration in [('bash', 'shell.bash'), ('zsh', 'shell.zsh')]:
             def invoke(*args, extra_env=None, command='alert8play'):
                 return subprocess.run(
@@ -44,7 +63,7 @@ def check():
             assert result.returncode == 0, result.stderr
             assert result.stdout.strip() == 'Playing included tone...', result.stdout
             assert recorded.read_text().splitlines() == [
-                str(plugin.resolve() / 'sounds/8bit-alert.wav'), '0.4', '0.5']
+                str(plugin.resolve() / 'sounds/8bit-alert.wav'), '0.4', '0.5'], recorded.read_text()
             recorded.unlink()
             for args, status in [(('--list',), 0), (('--help',), 0), (('--bad',), 2),
                                  (('one', 'two'), 2), (('unknown-alert',), 1), (('tesla',), 1)]:
@@ -68,7 +87,7 @@ def check():
             assert 'herdr-sound download PACK' in result.stdout
             for command in ['', 'play', 'list', 'download', 'set', 'enable', 'disable', 'status']:
                 result = invoke(*([command] if command else []), '--help', command='herdr-sound')
-                assert result.returncode == 0 and 'usage:' in result.stdout, result.stderr
+                assert result.returncode == 0 and 'usage:' in result.stdout.lower(), result.stderr
             for args in [('set', 'done', '1up'), ('enable',), ('disable',), ('on',), ('off',)]:
                 result = invoke(*args, command='herdr-sound')
                 assert result.returncode == 0, result.stderr
@@ -91,6 +110,17 @@ def check():
             assert not (home / 'unexpected').exists()
             assert invoke('play', command='herdr-sound').returncode == 0
             recorded.unlink()
+
+        # Settings follow symlinks, preserve permissions, and back up the target.
+        actual_config = home / 'actual settings.sh'
+        (config / 'config.sh').rename(actual_config)
+        actual_config.chmod(0o640)
+        (config / 'config.sh').symlink_to(actual_config)
+        assert invoke('on', command='herdr-sound').returncode == 0
+        assert (config / 'config.sh').is_symlink()
+        assert actual_config.stat().st_mode & 0o777 == 0o640
+        backups = list(home.glob('actual settings.sh.*.bak'))
+        assert backups and all(path.stat().st_mode & 0o777 == 0o600 for path in backups)
 
         # Download dispatch and the old sync name share the same implementation.
         tools = home / 'tools'
@@ -135,9 +165,8 @@ def check():
 
         # Verify bash forwards literal arguments, cwd, and failures to the implementation.
         commands = ["herdr-sounds-sync"]
-        (plugin / 'shell.zsh').write_text('\n'.join(
-            name + '() { printf "%s\\n" "$PWD" "${HERDR_AGENT_ARGS:-}" "$@"; return 7; }'
-            for name in commands))
+        (plugin / 'bin/herdr-sound').write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$PWD" "${HERDR_AGENT_ARGS:-}" "$@"; exit 7\n')
         arguments = ['two words', '$(touch unexpected)', '', '--option']
         for command in commands:
             result = subprocess.run(
@@ -146,21 +175,19 @@ def check():
                  'check', str(plugin), command, *arguments], cwd=home,
                 env={**os.environ, 'HOME': str(home)}, text=True, capture_output=True)
             assert result.returncode == 7, result.stderr
-            assert result.stdout.splitlines() == [str(home.resolve()), os.environ.get('HERDR_AGENT_ARGS', ''), *arguments], result.stdout
+            assert result.stdout.splitlines() == [str(home.resolve()), os.environ.get('HERDR_AGENT_ARGS', ''), 'download', *arguments], result.stdout
         assert not (home / 'unexpected').exists()
 
 
 def check_player_errors():
     with tempfile.TemporaryDirectory(prefix='audio test ') as temporary:
         root = Path(temporary)
-        for name in ['mktemp', 'rm', 'cat']:
-            (root / name).symlink_to(shutil.which(name))
         ffplay = root / 'ffplay'
         ffplay.write_text('#!/bin/sh\nprintf "%s" "${PLAYER_ERROR:-}" >&2\nexit "${PLAYER_EXIT:-0}"\n')
         ffplay.chmod(0o755)
         env = {**os.environ, 'PATH': str(root)}
         for error, code, expected in [('', '0', 0), ('audio open failed\n', '0', 1), ('device failure\n', '7', 7)]:
-            result = subprocess.run(['/bin/sh', str(ROOT / 'bin/herdr-play-sound'),
+            result = subprocess.run([str(ROOT / 'libexec/herdr-sound'), 'play-file',
                                      str(ROOT / 'sounds/8bit-alert.wav'), '0.4', '0.5'],
                                     env={**env, 'PLAYER_ERROR': error, 'PLAYER_EXIT': code}, text=True, capture_output=True)
             assert result.returncode == expected, result.stderr
@@ -169,5 +196,6 @@ def check_player_errors():
 
 
 if __name__ == '__main__':
+    subprocess.run(['sh', str(ROOT / 'scripts/build/install.sh')], check=True)
     check()
     check_player_errors()

@@ -1,0 +1,11 @@
+[package]
+name = "herdr-sound"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "MIT"
+description = "Play and configure Herdr alert sounds"
+
+[dependencies]
+serde_json = "1.0"
+rand = "0.9"

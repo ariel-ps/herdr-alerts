@@ -6,6 +6,9 @@ description = "Sound, flash and optional sprites when agents finish or need atte
 platforms = ["macos", "linux"]
 
 [[build]]
+command = ["sh", "./scripts/build/install.sh"]
+
+[[build]]
 command = ["sh","-c","if command -v uv >/dev/null 2>&1; then uv run --no-project python scripts/gen-alert-tables.py; else python3 scripts/gen-alert-tables.py; fi || echo 'alerts: kept the committed table'"]
 
 [[events]]

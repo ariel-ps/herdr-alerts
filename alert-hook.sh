@@ -89,77 +89,10 @@ __herdr_alert_resolve() {
   return 0
 }
 
-__herdr_alert_list() {
-  typeset -f __herdr_alert_names >/dev/null 2>&1 || {
-    echo "alert-hook: no alert table — run scripts/gen-alert-tables.py" >&2; return 1
-  }
-  local n alert_game alert_clip alert_sprite
-  printf "%-12s %-10s %-10s %s\n" SOUND PACK STATUS CLIP
-  for n in ${=$(__herdr_alert_names)}; do
-    __herdr_alert_spec "$n" || continue
-    # A blank clip column is not missing data: it is the entry saying "anything
-    # from this game", which is all a pack of numbered clips can offer.
-    local available=missing
-    __herdr_alert_resolve "$n" && available=ready
-    printf "%-12s %-10s %-10s %s\n" "$n" "$alert_game" "$available" "${alert_clip:-(any)}"
-  done
-  print '\nPreview:  herdr-sound play NAME'
-  print 'Download: herdr-sound download PACK'
-}
-
-__herdr_alert_status() {
-  local event key name override volume availability player duration='no limit'
-  print 'Herdr Sound\n'
-  if [[ "${HERDR_ALERT_OFF:-}" == 1 ]]; then
-    printf '  %-18s %s\n' 'Automatic alerts' 'disabled'
-  else
-    printf '  %-18s %s\n' 'Automatic alerts' 'enabled (requires the plugin to be enabled)'
-  fi
-  [[ -n "${HERDR_ALERT_MAX_SECONDS:-}" ]] && duration="$HERDR_ALERT_MAX_SECONDS seconds"
-  printf '  %-18s %s\n' 'Duration limit' "$duration"
-  print '\nAlerts'
-  printf '  %-10s %-8s %s\n' EVENT VOLUME SOUND
-  for event in blocked done; do
-    key=HERDR_ALERT_${(U)event}; name=${(P)key}
-    key=HERDR_SOUND_${(U)event}; override=${(P)key}
-    key=HERDR_VOLUME_${(U)event}; volume=${(P)key}
-    [[ -n "$volume" ]] || { [[ "$event" == blocked ]] && volume=1.8 || volume=1.0; }
-    [[ -n "$name" ]] || name=$(__herdr_alert_for_state "$event")
-    if [[ -n "$override" && -r "$override" ]]; then
-      name=$override; availability='custom file'
-    elif __herdr_alert_resolve "$name"; then
-      availability=ready
-    else
-      availability='unavailable; using bundled tone'
-    fi
-    printf '  %-10s %-8s %s\n' "$event" "$volume" "$name ($availability)"
-  done
-  print '\nAudio'
-  player=$(command -v afplay || command -v ffplay) || {
-    print -u2 'herdr-sound: no audio player found. Install FFmpeg on Linux.'; return 1
-  }
-  printf '  %-18s %s\n' 'Player' "$player"
-  printf '  %-18s %s\n' 'Configuration' "$config/config.sh"
-  print '\nTest speakers: herdr-sound play'
-}
-
+# All manual sound commands share the Rust CLI.
 case "${1:-}" in
-  --list) __herdr_alert_list; exit $? ;;
-  --status) __herdr_alert_status; exit $? ;;
-  --play)
-    sound="$root/sounds/8bit-alert.wav"
-    if [[ -n "${2:-}" ]]; then
-      __herdr_alert_spec "$2" || {
-        print -u2 -- "herdr-sound: unknown sound '$2'. Run herdr-sound list."; exit 1
-      }
-      __herdr_alert_resolve "$2" || {
-        print -u2 -- "herdr-sound: '$2' is not downloaded. Run herdr-sound download $alert_game."
-        exit 1
-      }
-    fi
-    print -r -- "Playing ${2:-included tone}..."
-    sh "$root/bin/herdr-play-sound" "$sound" "${HERDR_VOLUME_DONE:-1.0}" "${HERDR_ALERT_MAX_SECONDS:-}"
-    exit $? ;;
+  --list|--status) exec "$root/bin/herdr-sound" "${1#--}" ;;
+  --play) shift; exec "$root/bin/herdr-sound" play "$@" ;;
 esac
 
 # Muting automatic alerts still allows explicit previews and listing sounds.
