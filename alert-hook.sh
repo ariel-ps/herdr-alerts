@@ -38,8 +38,8 @@
 #
 # Run by hand to hear what a name is before committing to it. Neither mode
 # touches a pane — auditioning a clip should not need a live agent to block:
-#   zsh alert-hook.sh --list
-#   zsh alert-hook.sh --play tesla
+#   alert8play --list
+#   alert8play tesla
 
 emulate -L zsh
 setopt pipefail
@@ -50,13 +50,9 @@ root="${HERDR_PLUGIN_ROOT:-${0:A:h}}"
 
 # Sounds are overridable so a user can bring their own without editing the
 # plugin. Anything unreadable falls through to the bundled pair.
-config="${HERDR_PLUGIN_CONFIG_DIR:-$root}"
+config="${HERDR_PLUGIN_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/plugins/config/dev.ariel.herdr-alerts}"
+[[ -r "$config/config.sh" ]] || config=$root
 [[ -r "$config/config.sh" ]] && source "$config/config.sh"
-
-# After config.sh, not before: the README documents HERDR_ALERT_OFF as one of
-# the things that file sets, and checking it first made that the one setting in
-# the list the file could not actually make.
-[[ "${HERDR_ALERT_OFF:-}" == 1 ]] && exit 0
 
 # Generated, and absent on a checkout that never ran the build step — hence the
 # `typeset -f` guards below rather than a hard require.
@@ -109,14 +105,20 @@ __herdr_alert_list() {
 case "${1:-}" in
   --list) __herdr_alert_list; exit $? ;;
   --play)
-    __herdr_alert_resolve "${2:-}" || {
-      echo "alert-hook: nothing to play for '${2:-}' — unknown name, or that game is not synced (herdr-sounds-sync)" >&2
-      exit 1
-    }
+    sound="$root/sounds/8bit-alert.wav"
+    if [[ -n "${2:-}" ]]; then
+      __herdr_alert_resolve "$2" || {
+        echo "alert-hook: nothing to play for '$2' — unknown name, or that game is not synced (herdr-sounds-sync)" >&2
+        exit 1
+      }
+    fi
     print -r -- "$sound"
     sh "$root/bin/herdr-play-sound" "$sound" "${HERDR_VOLUME_DONE:-1.0}" "${HERDR_ALERT_MAX_SECONDS:-}"
     exit $? ;;
 esac
+
+# Muting automatic alerts still allows explicit previews and listing sounds.
+[[ "${HERDR_ALERT_OFF:-}" == 1 ]] && exit 0
 
 command -v jq >/dev/null 2>&1 || exit 0
 
