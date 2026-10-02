@@ -276,14 +276,14 @@ def check_flashes():
         audio.chmod(0o755)
         env = {**os.environ, 'HOME': temporary, 'XDG_CONFIG_HOME': temporary,
                'HERDR_PLUGIN_CONFIG_DIR': str(config), 'HERDR_PLUGIN_ROOT': str(ROOT),
-               'HERDR_PANE_ID': 'pane-123', 'PATH': temporary + ':' + os.environ['PATH']}
+               'HERDR_PANE_ID': 'wN:p3', 'PATH': temporary + ':' + os.environ['PATH']}
         binary = str(ROOT / 'libexec/herdr-sound')
         for command, reject, audio_exit, rgba in [
             ([str(ROOT / 'bin/herdr-sound'), 'play', '--flash'], False, '0', [60, 220, 130, 80]),
             ([str(ROOT / 'bin/alert8play'), '--flash'], False, '0', [60, 220, 130, 80]),
             ([binary, 'play', '--flash'], True, '0', [60, 220, 130, 80]),
             ([binary, 'play', '--flash'], False, '7', [60, 220, 130, 80]),
-            (['zsh', str(ROOT / 'libexec/herdr-flash'), 'pane-123', 'blocked'], False, '0', [255, 60, 60, 90]),
+            (['zsh', str(ROOT / 'libexec/herdr-flash'), 'wN:p3', 'blocked'], False, '0', [255, 60, 60, 90]),
         ]:
             requests = []
             errors = []
@@ -315,15 +315,18 @@ def check_flashes():
             flashes = [r['params'] for r in requests if r['method'] == 'pane.graphics.set']
             assert len(flashes) == (1 if reject else 2), requests
             for params in flashes:
-                assert params['pane_id'] == 'pane-123'
+                assert params['pane_id'] == 'wN:p3'
                 assert base64.b64decode(params['data_base64']) == bytes(rgba) * 64
                 assert params['z_index'] == 9
             if reject:
                 assert 'kitty_graphics' in result.stderr
-        for pane in ['bad"pane']:
+        for pane in ['bad"pane', 'wN:p3\n', '../pane']:
             result = subprocess.run([binary, 'play', '--flash'], env={**env, 'HERDR_PANE_ID': pane},
                                     text=True, capture_output=True)
             assert result.returncode == 1 and 'invalid HERDR_PANE_ID' in result.stderr
+            result = subprocess.run(['zsh', str(ROOT / 'libexec/herdr-flash'), pane, 'done'],
+                                    env=env, text=True, capture_output=True)
+            assert result.returncode == 2 and 'valid pane ID' in result.stderr
         result = subprocess.run([binary, 'play', '--flash'], env=env, text=True, capture_output=True)
         assert result.returncode == 1 and 'socket not found' in result.stderr
         for args in [['play', '--flash', '--flash'], ['--alert8play', '--list', '--flash']]:

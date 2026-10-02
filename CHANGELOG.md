@@ -4,6 +4,11 @@ All notable changes to Herdr Alerts are documented here.
 
 ## Unreleased
 
+### Fixed
+
+- Accept Herdr's workspace-qualified pane IDs (for example, `wN:p3`) when
+  flashing panes through manual previews or automatic alerts.
+
 ### Added
 
 - `herdr-sound play [NAME] --flash` and `alert8play [NAME] --flash` preview

@@ -396,7 +396,7 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             if flash
                 && !pane
                     .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':'))
             {
                 return Err(failure(
                     "invalid HERDR_PANE_ID; unset it when running outside Herdr.",

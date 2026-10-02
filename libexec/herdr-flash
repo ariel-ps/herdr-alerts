@@ -5,7 +5,7 @@ setopt pipefail
 
 pane=${1:-}
 state=${2:-done}
-if [[ $# -gt 2 || "$pane" == *[^a-zA-Z0-9_-]* || ( "$state" != done && "$state" != blocked ) ]]; then
+if [[ $# -gt 2 || "$pane" == *[^a-zA-Z0-9_:-]* || ( "$state" != done && "$state" != blocked ) ]]; then
   print -u2 -- 'herdr-sound: flash requires a valid pane ID and done or blocked state.'
   exit 2
 fi
