@@ -21,6 +21,7 @@ const KEYS: &[&str] = &[
     "HERDR_ALERT_MAX_SECONDS",
     "HERDR_ALERT_OFF",
     "HERDR_ALERT_FLASH",
+    "HERDR_ALERT_SPRITE",
 ];
 
 fn target() -> Result<PathBuf> {

@@ -14,6 +14,9 @@ All notable changes to Herdr Alerts are documented here.
 
 ### Added
 
+- `herdr-sound set sprite on|off` saves the blocked-alert animation preference,
+  independently of flashing. Status shows both settings.
+
 - `herdr-sound set flash on|off` saves a shared preference for previews and
   automatic alerts. Flashing defaults to on; no playback flag is needed.
 - Previews flash green four times, using the original flash-term timing.

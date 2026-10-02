@@ -28,6 +28,7 @@ Commands:
   download [PACK ...]   Download selected packs, or all sound packs
   set blocked|done NAME Choose an automatic alert sound
   set flash on|off     Save the flash setting for previews and automatic alerts
+  set sprite on|off    Save the animation setting for blocked-agent alerts
   enable / disable     Enable or mute automatic alerts
   status               Check settings and audio backend
 
@@ -296,6 +297,15 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
     );
     let duration = config.get("HERDR_ALERT_MAX_SECONDS");
     println!(
+        "  {:<18} {} (blocked-agent alerts)",
+        "Sprite",
+        if matches!(config.get("HERDR_ALERT_SPRITE"), "" | "1") {
+            "on"
+        } else {
+            "off"
+        }
+    );
+    println!(
         "  {:<18} {}\n\nAlerts\n  {:<10} {:<8} SOUND",
         "Duration limit",
         if duration.is_empty() {
@@ -473,14 +483,24 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             );
             Ok(())
         }
-        "set" if args.len() == 3 && args[1] == "flash" => {
+        "set" if args.len() == 3 && ["flash", "sprite"].contains(&args[1].as_str()) => {
             let value = match args[2].as_str() {
                 "on" => "1",
                 "off" => "0",
-                _ => return Err(usage("usage: herdr-sound set flash on|off")),
+                _ => return Err(usage(format!("usage: herdr-sound set {} on|off", args[1]))),
             };
-            settings::save(&root, &[("HERDR_ALERT_FLASH".into(), value.into())])?;
-            println!("Flash {} (previews and automatic alerts).", args[2]);
+            settings::save(
+                &root,
+                &[(
+                    format!("HERDR_ALERT_{}", args[1].to_uppercase()),
+                    value.into(),
+                )],
+            )?;
+            if args[1] == "sprite" {
+                println!("Sprite {} (blocked-agent alerts).", args[2]);
+            } else {
+                println!("Flash {} (previews and automatic alerts).", args[2]);
+            }
             Ok(())
         }
         "set" if args.len() == 3 && ["blocked", "done"].contains(&args[1].as_str()) => {

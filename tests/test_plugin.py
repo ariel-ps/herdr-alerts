@@ -382,9 +382,94 @@ printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
         assert '\033' not in result.stdout + result.stderr
 
 
+
+def check_sprite_settings():
+    # Drive the real hook with saved CLI settings and isolated rendering/audio stubs.
+    with tempfile.TemporaryDirectory(prefix='sprite-settings-') as temporary:
+        home = Path(temporary)
+        config = home / 'config'
+        config.mkdir()
+        (config / 'config.sh').write_text('# Keep custom settings\nHERDR_ALERT_OFF=0\n')
+        plugin = home / 'plugin'
+        stubs = home / 'tools'
+        stubs.mkdir()
+        log = home / 'effects'
+        for name, script in {
+            'herdr': '#!/bin/sh\necho \'{"result":{"process_info":{"shell_pid":123}}}\'\n',
+            'ps': '#!/bin/sh\nprintf "%s\\n" "$TEST_TTY"\n',
+            'stty': '#!/bin/sh\nprintf "24 80\\n"\n',
+            'perl': '#!/bin/sh\necho sprite >> "$EFFECT_LOG"\n',
+            'afplay': '#!/bin/sh\nexit 0\n',
+        }.items():
+            path = stubs / name
+            path.write_text(script)
+            path.chmod(0o755)
+        for name, content in {
+            'libexec/herdr-flash': 'echo flash >> "$EFFECT_LOG"\nexit "${FLASH_EXIT:-0}"\n',
+            'libexec/herdr-play-sound': 'echo audio >> "$EFFECT_LOG"\n',
+            'vendor/sprite/sprite.pl': '',
+            'assets/audio/8bit-alert.wav': '',
+        }.items():
+            path = plugin / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        master, slave = pty.openpty()
+        try:
+            env = {**os.environ, 'HERDR_PLUGIN_CONFIG_DIR': str(config),
+                   'HERDR_PLUGIN_ROOT': str(ROOT), 'XDG_CACHE_HOME': str(home / 'cache'),
+                   'PATH': str(stubs) + ':' + os.environ['PATH'], 'EFFECT_LOG': str(log),
+                   'TEST_TTY': os.ttyname(slave).removeprefix('/dev/')}
+            binary = str(ROOT / 'bin/herdr-sound')
+            def cli(*args):
+                result = subprocess.run([binary, *args], env=env, text=True, capture_output=True)
+                assert result.returncode == 0, result.stderr
+                return result.stdout
+            # Missing sprite settings retain the existing default-on behavior.
+            assert 'on (blocked-agent alerts)' in cli('status')
+            for flash, sprite, state, muted, failure in [
+                ('off', 'on', 'blocked', False, '0'),
+                ('on', 'off', 'blocked', False, '0'),
+                ('off', 'off', 'blocked', False, '0'),
+                ('on', 'on', 'blocked', False, '0'),
+                ('on', 'on', 'blocked', False, '7'),
+                ('off', 'on', 'done', False, '0'),
+                ('on', 'on', 'blocked', True, '0'),
+            ]:
+                cli('set', 'flash', flash)
+                cli('set', 'sprite', sprite)
+                cli('disable' if muted else 'enable')
+                saved = (config / 'config.sh').read_bytes()
+                assert saved.startswith(b'# Keep custom settings\n')
+                assert f"HERDR_ALERT_SPRITE='{int(sprite == 'on')}'".encode() in saved
+                assert f'{sprite} (blocked-agent alerts)' in cli('status')
+                result = subprocess.run([binary, 'set', 'sprite', 'invalid'], env=env, capture_output=True)
+                assert result.returncode == 2 and (config / 'config.sh').read_bytes() == saved
+                log.write_text('')
+                result = subprocess.run(
+                    ['zsh', str(ROOT / 'hooks/on-pane-agent-status-changed-alert.zsh')],
+                    env={**env, 'HERDR_PLUGIN_ROOT': str(plugin), 'FLASH_EXIT': failure,
+                         'HERDR_PLUGIN_EVENT_JSON': json.dumps({'pane_id': 'wN:p3', 'agent_status': state})},
+                    text=True, capture_output=True, timeout=5)
+                assert result.returncode == 0, result.stderr
+                expected = [] if muted else ['audio']
+                if not muted and flash == 'on':
+                    expected.append('flash')
+                if not muted and sprite == 'on' and state == 'blocked':
+                    expected.append('sprite')
+                # The detached renderer redirects stdio, so pipe EOF can precede its log write.
+                deadline = time.monotonic() + 2
+                while sorted(log.read_text().splitlines()) != sorted(expected) and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                assert sorted(log.read_text().splitlines()) == sorted(expected), (flash, sprite, state, log.read_text(), result.stderr)
+        finally:
+            os.close(master)
+            os.close(slave)
+
+
 if __name__ == '__main__':
     subprocess.run(['sh', str(ROOT / 'scripts/build/install.sh')], check=True)
     check()
     check_player_errors()
     check_flashes()
     check_terminal_flashes()
+    check_sprite_settings()

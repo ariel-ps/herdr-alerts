@@ -23,7 +23,7 @@
 #
 # Env in: HERDR_PLUGIN_EVENT_JSON (pane_id, agent_status).
 #   HERDR_ALERT_OFF=1           silence entirely
-#   HERDR_ALERT_FLASH=0         sound only — no wash, and no sprite either
+#   HERDR_ALERT_FLASH=0         no flash; sprites are controlled separately
 #   HERDR_ALERT_SPRITE=0        no sprite on blocked
 #   HERDR_ALERT_BLOCKED=<name>  which named alert `blocked` plays
 #   HERDR_ALERT_DONE=<name>     ...and which one `done` plays
@@ -39,7 +39,7 @@
 #   herdr-sound play tesla
 
 emulate -L zsh
-setopt pipefail
+setopt pipefail extendedglob
 
 # HERDR_PLUGIN_ROOT is set by herdr; the ${0:A:h:h} fallback keeps the hook
 # runnable by hand, which is how it gets tested.
@@ -121,9 +121,11 @@ else
 fi
 
 # Flash first so the light and the sound land together rather than in sequence.
-if [[ "${HERDR_ALERT_FLASH:-1}" == 1 && -n "$pane" ]]; then
+if [[ -n "$pane" && "$pane" != *[^a-zA-Z0-9_:-]* ]]; then
   (
-    zsh "$root/libexec/herdr-flash" "$pane" "$state" || exit $?
+    if [[ "${HERDR_ALERT_FLASH:-1}" == 1 ]]; then
+      zsh "$root/libexec/herdr-flash" "$pane" "$state"
+    fi
 
     # Sprite after the wash rather than under it: both are layers now, and the
     # sprite is the one worth looking at. Only for blocked — it runs about a
@@ -131,8 +133,9 @@ if [[ "${HERDR_ALERT_FLASH:-1}" == 1 && -n "$pane" ]]; then
     if [[ "$state" == blocked && "${HERDR_ALERT_SPRITE:-1}" == 1 ]]; then
       shell_pid=$(herdr pane process-info --pane "$pane" 2>/dev/null \
         | jq -r '.result.process_info.shell_pid // empty')
-      if [[ -n "$shell_pid" ]]; then
+      if [[ "$shell_pid" == <1-> ]]; then
         tty=$(ps -o tty= -p "$shell_pid" 2>/dev/null | tr -d ' ')
+        [[ ( "$tty" == tty[a-zA-Z0-9]## || "$tty" == pts/<-> ) && -c "/dev/$tty" ]] || exit 1
         sprite="$root/vendor/sprite/sprite.pl"
         cols=$(stty size < "/dev/$tty" 2>/dev/null | awk '{print $2}')
         if [[ -n "$tty" && -w "/dev/$tty" && -r "$sprite" && -n "$cols" ]]; then

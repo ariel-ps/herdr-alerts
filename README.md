@@ -6,7 +6,7 @@ Herdr Alerts plays a sound and flashes the affected pane when an agent finishes 
 
 ```sh
 herdr-sound play                 # Play a tone and flash your terminal
-herdr-sound set flash off        # Prefer sound only
+herdr-sound set flash off        # Disable flashing
 herdr-sound download mario       # Get a sound pack
 herdr-sound set done 1up         # Use it when an agent finishes
 ```
@@ -53,9 +53,11 @@ herdr-sound set blocked tesla
 
 Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Automatic alerts also flash the pane and can show sprites when the corresponding assets are available.
 
-Flashing is on by default. Run `herdr-sound set flash off` for sound only, or `herdr-sound set flash on` to enable it. This preference is saved for manual previews (`herdr-sound play` and `alert8play`) and automatic alerts. Herdr does not need to be running for terminal previews.
+Flashing is on by default. Run `herdr-sound set flash off` to disable flashing, or `herdr-sound set flash on` to enable it. This preference is saved for manual previews (`herdr-sound play` and `alert8play`) and automatic alerts. Herdr does not need to be running for terminal previews.
 
 Outside Herdr, this uses the original `flash-term` background-color effect (OSC 11). It restores Kitty's current background when remote control is available, or resets to the terminal's configured background otherwise. Inside Herdr, it draws and removes a temporary Kitty graphics overlay without changing pane colors; enable `experimental.kitty_graphics = true` in Herdr's configuration. Explicit previews work even when automatic alerts are muted and do not show sprites. For background jobs without a terminal, turn flashing off.
+
+Sprites are also on by default for blocked-agent alerts. Use `herdr-sound set sprite off` or `herdr-sound set sprite on` to save your preference. Sprites work independently of flashing; turn both off for sound only. Manual previews do not show sprites.
 
 ## Commands
 
@@ -67,6 +69,7 @@ Outside Herdr, this uses the original `flash-term` background-color effect (OSC 
 | `herdr-sound set blocked NAME` | Choose the needs-attention sound |
 | `herdr-sound set done NAME` | Choose the finished sound |
 | `herdr-sound set flash on\|off` | Save the flash preference for previews and automatic alerts |
+| `herdr-sound set sprite on\|off` | Save the sprite preference for blocked-agent alerts |
 | `herdr-sound enable` | Enable automatic alerts |
 | `herdr-sound disable` | Mute automatic alerts; manual previews still work |
 | `herdr-sound status` | Show settings, sound availability, and audio backend |
@@ -87,10 +90,11 @@ Edit or create `config.sh` there to adjust volume or clip duration:
 HERDR_VOLUME_BLOCKED=1.8
 HERDR_VOLUME_DONE=1.0
 HERDR_ALERT_MAX_SECONDS=3
-HERDR_ALERT_FLASH=1  # 0 for sound only
+HERDR_ALERT_FLASH=1   # 0 disables flashing
+HERDR_ALERT_SPRITE=1  # 0 disables sprites
 ```
 
-Previews use the done-volume and duration settings. The CLI saves sound choices, flash preference, and enabled state in a marked section at the end of this file, backing up existing settings. `set blocked` and `set done` also clear that event's custom file override.
+Previews use the done-volume and duration settings. The CLI saves sound choices, flash and sprite preferences, and enabled state in a marked section at the end of this file, backing up existing settings. `set blocked` and `set done` also clear that event's custom file override.
 
 ## No sound?
 
