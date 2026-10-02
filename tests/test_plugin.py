@@ -8,8 +8,6 @@ import tempfile
 import sys
 import tomllib
 import base64
-import socket
-import threading
 import errno
 import pty
 import select
@@ -265,7 +263,7 @@ def check_player_errors():
 
 
 def check_flashes():
-    # A real Unix socket exercises the shared flash helper without a live pane.
+    # Pane IDs are validated before a detached flash helper is launched.
     with tempfile.TemporaryDirectory(prefix='flash-', dir='/tmp') as temporary:
         home = Path(temporary)
         config = home / 'herdr'
@@ -278,48 +276,6 @@ def check_flashes():
                'HERDR_PLUGIN_CONFIG_DIR': str(config), 'HERDR_PLUGIN_ROOT': str(ROOT),
                'HERDR_PANE_ID': 'wN:p3', 'PATH': temporary + ':' + os.environ['PATH']}
         binary = str(ROOT / 'libexec/herdr-sound')
-        for command, reject, audio_exit, rgba in [
-            ([str(ROOT / 'bin/herdr-sound'), 'play', '--flash'], False, '0', [60, 220, 130, 80]),
-            ([str(ROOT / 'bin/alert8play'), '--flash'], False, '0', [60, 220, 130, 80]),
-            ([binary, 'play', '--flash'], True, '0', [60, 220, 130, 80]),
-            ([binary, 'play', '--flash'], False, '7', [60, 220, 130, 80]),
-            (['zsh', str(ROOT / 'libexec/herdr-flash'), 'wN:p3', 'blocked'], False, '0', [255, 60, 60, 90]),
-        ]:
-            requests = []
-            errors = []
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
-                server.bind(str(config / 'herdr.sock'))
-                server.listen()
-                server.settimeout(10)
-                def serve():
-                    try:
-                        for _ in range(2 if reject else 5):
-                            connection, _ = server.accept()
-                            with connection:
-                                connection.settimeout(5)
-                                request = json.loads(connection.makefile('rb').readline())
-                                requests.append(request)
-                                reply = {'error': {'message': 'graphics disabled'}} if reject else {'result': {}}
-                                connection.sendall((json.dumps(reply) + '\n').encode())
-                    except Exception as exc:
-                        errors.append(exc)
-                worker = threading.Thread(target=serve)
-                worker.start()
-                result = subprocess.run(command, env={**env, 'PLAYBACK_EXIT': audio_exit},
-                                        text=True, capture_output=True, timeout=20)
-                worker.join(timeout=12)
-                assert not worker.is_alive() and not errors, errors
-            (config / 'herdr.sock').unlink()
-            assert result.returncode == (1 if reject else int(audio_exit)), result.stderr
-            assert requests[-1]['method'] == 'pane.graphics.clear', requests
-            flashes = [r['params'] for r in requests if r['method'] == 'pane.graphics.set']
-            assert len(flashes) == (1 if reject else 2), requests
-            for params in flashes:
-                assert params['pane_id'] == 'wN:p3'
-                assert base64.b64decode(params['data_base64']) == bytes(rgba) * 64
-                assert params['z_index'] == 9
-            if reject:
-                assert 'kitty_graphics' in result.stderr
         for pane in ['bad"pane', 'wN:p3\n', '../pane']:
             result = subprocess.run([binary, 'play', '--flash'], env={**env, 'HERDR_PANE_ID': pane},
                                     text=True, capture_output=True)
@@ -327,31 +283,22 @@ def check_flashes():
             result = subprocess.run(['zsh', str(ROOT / 'libexec/herdr-flash'), pane, 'done'],
                                     env=env, text=True, capture_output=True)
             assert result.returncode == 2 and 'valid pane ID' in result.stderr
-        result = subprocess.run([binary, 'play', '--flash'], env=env, text=True, capture_output=True)
-        assert result.returncode == 1 and 'socket not found' in result.stderr
         for args in [['play', '--flash', '--flash'], ['--alert8play', '--list', '--flash']]:
             result = subprocess.run([binary, *args], env=env, text=True, capture_output=True)
             assert result.returncode == 2, result.stderr
 
 
 def check_terminal_flashes():
-    # Run in a real controlling PTY with no Herdr, and redirect stdout to a log.
-    with tempfile.TemporaryDirectory(prefix='terminal-flash-', dir='/tmp') as temporary, \
-         socket.socket(socket.AF_UNIX) as legacy_socket:
+    # Exercise both background and pane-image flashes in a real controlling PTY.
+    with tempfile.TemporaryDirectory(prefix='terminal-flash-', dir='/tmp') as temporary:
         home = Path(temporary)
-        (home / 'herdr').mkdir()
-        legacy_socket.bind(str(home / 'herdr/herdr.sock'))
-        # Model Herdr 0.9.3: no graphics RPC, but pane process-info is available.
         herdr = home / 'herdr-stub'
         herdr.mkdir()
         (herdr / 'herdr').write_text('''#!/bin/sh
 test "$*" = 'pane process-info --pane wN:p3' || exit 2
 printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
 ''')
-        (herdr / 'nc').write_text('''#!/bin/sh
-cat >/dev/null
-printf '%s\\n' '{"error":{"code":"unknown_method","message":"unknown method: pane.graphics.set"}}'
-''')
+        (herdr / 'stty').write_text("#!/bin/sh\nprintf '24 80\\n'\n")
         for stub in herdr.iterdir():
             stub.chmod(0o755)
         player = home / 'afplay'
@@ -401,15 +348,17 @@ printf '%s\\n' '{"error":{"code":"unknown_method","message":"unknown method: pan
                 if not reaped:
                     os.kill(pid, signal.SIGKILL)
                     os.waitpid(pid, 0)
-            assert os.waitstatus_to_exitcode(status) == (1 if term == 'dumb' else int(audio_exit)), captured
+            assert os.waitstatus_to_exitcode(status) == int(audio_exit), captured
             assert '\033' not in log.read_text(), log.read_text()
             assert 'Playing included tone' in log.read_text()
-            if term == 'dumb':
-                assert b'no visual-bell capability' in captured, captured
+            if pane:
+                assert captured.count(b'\x1b_Ga=T') == 4, captured
+                assert captured.count(b'\x1b_Ga=d,d=I') == 5, captured
+                encoded_green = base64.b64encode(bytes([0, 204, 68, 255]) * 64)
+                assert captured.count(b';' + encoded_green + b'\x1b\\') == 4, captured
             else:
-                assert captured.count(b'\x1b[?5h') == 2, captured
-                assert captured.count(b'\x1b[?5l') == 2, captured
-                assert captured.rfind(b'\x1b[?5l') > captured.rfind(b'\x1b[?5h'), captured
+                assert captured.count(b'\x1b]11;#00cc44\x1b\\') == 4, captured
+                assert captured.count(b'\x1b]111\x1b\\') == 5, captured
         result = subprocess.run([str(ROOT / 'bin/alert8play'), '--flash'],
                                 env={**env, 'TERM': 'xterm-256color'}, start_new_session=True,
                                 text=True, capture_output=True)

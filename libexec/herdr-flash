@@ -1,5 +1,6 @@
 #!/usr/bin/env zsh
-# Shared by automatic alerts and explicit sound previews.
+# Use the original flash-term background effect outside Herdr, and the same
+# Kitty image protocol as vendor/sprite/sprite.pl inside a Herdr pane.
 emulate -L zsh
 setopt pipefail extendedglob
 
@@ -10,86 +11,54 @@ if [[ $# -gt 2 || "$pane" == *[^a-zA-Z0-9_:-]* || ( "$state" != done && "$state"
   exit 2
 fi
 
-# Let terminfo flash the terminal without changing its palette. Writing to the
-# terminal device keeps escape sequences out of redirected command output.
-terminal_flash() {
-  command -v tput >/dev/null 2>&1 || {
-    print -u2 -- 'herdr-sound: terminal flashes require tput (ncurses).'
-    exit 1
-  }
-  if ! { exec 3>"${1:-/dev/tty}"; } 2>/dev/null; then
-    print -u2 -- 'herdr-sound: --flash needs an interactive terminal; omit it for audio-only jobs.'
+terminal=/dev/tty
+if [[ -n "$pane" ]]; then
+  shell_pid=$(herdr pane process-info --pane "$pane" | jq -er '.result.process_info.shell_pid | select(type == "number")') || exit 1
+  [[ "$shell_pid" == <1-> ]] || exit 1
+  terminal=$(ps -o tty= -p "$shell_pid" | tr -d ' ') || exit 1
+  if [[ ( "$terminal" != tty[a-zA-Z0-9]## && "$terminal" != pts/<-> ) || ! -c "/dev/$terminal" ]]; then
+    print -u2 -- 'herdr-sound: no terminal found for the Herdr pane.'
     exit 1
   fi
-  for _ in 1 2; do
-    tput flash >&3 || {
-      print -u2 -- 'herdr-sound: this TERM has no visual-bell capability. Check TERM or use sound-only playback.'
-      exit 1
-    }
-    sleep 0.12
-  done
-}
-
-if [[ -z "$pane" ]]; then
-  terminal_flash
-  exit $?
+  terminal="/dev/$terminal"
+fi
+if ! { exec 3>"$terminal"; } 2>/dev/null; then
+  print -u2 -- 'herdr-sound: --flash needs an interactive terminal; omit it for audio-only jobs.'
+  exit 1
 fi
 
-for dependency in jq nc perl; do
-  command -v "$dependency" >/dev/null 2>&1 || {
-    print -u2 -- "herdr-sound: $dependency is required for pane flashes."
+color='#00cc44'
+[[ "$state" == blocked ]] && color='#ff0000'
+if [[ -n "$pane" ]]; then
+  # OSC background changes and tput flash are ignored by Herdr 0.9.3. Its
+  # supported Kitty image path draws above even a full-screen agent instead.
+  read -r rows cols <<<"$(stty size < "$terminal")"
+  if [[ "$rows" != <1-> || "$cols" != <1-> ]]; then
+    print -u2 -- 'herdr-sound: cannot determine the pane dimensions.'
     exit 1
-  }
-done
-socket="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/herdr.sock"
-[[ -S "$socket" ]] || {
-  print -u2 -- 'herdr-sound: Herdr socket not found. Start Herdr before using --flash.'
-  exit 1
-}
+  fi
+  rgba=(0 204 68 255)
+  [[ "$state" == blocked ]] && rgba=(255 0 0 255)
+  pixels=$(perl -MMIME::Base64 -e 'print encode_base64(pack("C4", @ARGV) x 64, "")' "${rgba[@]}") || exit 1
+  printf -v flash '\0337\033[H\033_Ga=T,f=32,s=8,v=8,c=%s,r=%s,C=1,z=9,i=%s,q=2;%s\033\\\0338' "$cols" "$rows" "$$" "$pixels"
+  printf -v restore '\033_Ga=d,d=I,i=%s,q=2\033\\' "$$"
+else
+  # Keep the original Kitty color restoration; reset to the terminal's default
+  # background elsewhere, exactly as flash-term does.
+  restore=$'\e]111\e\\'
+  if [[ -n "${KITTY_WINDOW_ID:-}" ]] && command -v kitty >/dev/null 2>&1; then
+    background=$(kitty @ get-colors --match "id:$KITTY_WINDOW_ID" 2>/dev/null | awk '$1 == "background" { print $2; exit }')
+    [[ "$background" == \#[0-9a-fA-F](#c6) ]] && restore=$'\e]11;'"$background"$'\e\\'
+  fi
+  printf -v flash '\033]11;%s\033\\' "$color"
+fi
 
-# Composite above terminal cells so full-screen agents also show the flash.
-rgba=(60 220 130 80)
-[[ "$state" == blocked ]] && rgba=(255 60 60 90)
-pixels=$(perl -MMIME::Base64 -e 'print encode_base64(pack("C4", @ARGV) x 64, "")' "${rgba[@]}") || exit 1
-set_request=$(jq -cn --arg pane "$pane" --arg pixels "$pixels" '{id:"flash",method:"pane.graphics.set",params:{pane_id:$pane,format:"rgba",image_width:8,image_height:8,data_base64:$pixels,layer_id:"alert",z_index:9,placement:{viewport_col:0,viewport_row:0,grid_cols:400,grid_rows:200}}}') || exit 1
-clear_request=$(jq -cn --arg pane "$pane" '{id:"clear",method:"pane.graphics.clear",params:{pane_id:$pane,layer_id:"alert"}}') || exit 1
-
-rpc() {
-  local reply
-  rpc_error= rpc_message=
-  reply=$(printf '%s\n' "$1" | nc -w 2 -U "$socket") || return 1
-  rpc_error=$(print -r -- "$reply" | jq -r '.error.code // empty' 2>/dev/null)
-  rpc_message=$(print -r -- "$reply" | jq -r '.error.message // empty' 2>/dev/null)
-  print -r -- "$reply" | jq -e 'type == "object" and .error == null and has("result")' >/dev/null 2>&1
-}
-
-# Always attempt cleanup, including failed requests or interrupted playback.
-trap 'rpc "$clear_request" >/dev/null 2>&1' EXIT
+trap 'printf "%s" "$restore" >&3' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-for _ in 1 2; do
-  rpc "$set_request" || {
-    if [[ "$rpc_error" == unknown_method ]]; then
-      # Released Herdr versions may lack the overlay API. Resolve the event's
-      # pane, not the server's own terminal, for the standard visual bell.
-      shell_pid=$(herdr pane process-info --pane "$pane" | jq -er '.result.process_info.shell_pid | select(type == "number")') || exit 1
-      [[ "$shell_pid" == <1-> ]] || exit 1
-      terminal=$(ps -o tty= -p "$shell_pid" | tr -d ' ') || exit 1
-      if [[ ( "$terminal" != tty[a-zA-Z0-9]## && "$terminal" != pts/<-> ) || ! -c "/dev/$terminal" ]]; then
-        print -u2 -- 'herdr-sound: no terminal found for the Herdr pane.'
-        exit 1
-      fi
-      trap - EXIT
-      TERM=xterm-256color terminal_flash "/dev/$terminal"
-      exit $?
-    fi
-    print -u2 -- "herdr-sound: pane flash failed: ${rpc_message:-no valid response from Herdr}. Check the pane and experimental.kitty_graphics."
-    exit 1
-  }
-  sleep 0.18
-  rpc "$clear_request" || {
-    print -u2 -- 'herdr-sound: could not clear the pane flash. Check the Herdr connection.'
-    exit 1
-  }
-  sleep 0.12
+for _ in 1 2 3 4; do
+  printf '%s' "$flash" >&3
+  sleep 0.13
+  printf '%s' "$restore" >&3
+  sleep 0.13
 done

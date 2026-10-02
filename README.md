@@ -26,7 +26,7 @@ Open a new terminal, then run `herdr-sound play`. You should hear a short tone; 
 <details>
 <summary>Install only this plugin into an existing Herdr installation</summary>
 
-Requires Herdr 0.9.3+, Git, a stable Rust toolchain (Cargo and rustc), Python 3, zsh, and jq. Installation compiles the Rust CLI. Audio uses `afplay` on macOS or `ffplay` (FFmpeg) on Linux. Terminal flashes use `tput`, included with macOS; Linux supplies it through `ncurses-bin` (Ubuntu/Debian) or `ncurses` (Fedora). Pane graphics use netcat and Perl with `MIME::Base64` and `JSON::PP`; optional sound-pack downloads use the existing Python fetchers through uv.
+Requires Herdr 0.9.3+, Git, a stable Rust toolchain (Cargo and rustc), Python 3, zsh, and jq. Installation compiles the Rust CLI. Audio uses `afplay` on macOS or `ffplay` (FFmpeg) on Linux. Pane graphics use Perl with `MIME::Base64` and `JSON::PP`; optional sound-pack downloads use the existing Python fetchers through uv.
 
 ```sh
 herdr plugin install ariel-ps/herdr-alerts --ref main --yes
@@ -53,9 +53,9 @@ herdr-sound set blocked tesla
 
 Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Automatic alerts also flash the pane and can show sprites when the corresponding assets are available.
 
-Run `herdr-sound play --flash` or `alert8play --flash` from your terminal for sound and two flashes. Herdr does not need to be running. Named sounds work too: `herdr-sound play 1up --flash`.
+Run `herdr-sound play --flash` or `alert8play --flash` from your terminal for sound and four green flashes. Herdr does not need to be running. Named sounds work too: `herdr-sound play 1up --flash`.
 
-Outside Herdr, flashing uses your terminal's visual-bell capability (`tput flash`) without changing its colors or contents. Inside Herdr, versions with the graphics API use a green pane overlay, which requires `experimental.kitty_graphics = true`. Versions without that API, including Herdr 0.9.3, use the pane's terminal visual bell. Explicit previews work even when automatic alerts are muted and do not show sprites. Omit `--flash` for sound only. A terminal without visual-bell support, or a background job without a terminal, reports a clear error.
+Outside Herdr, this uses the original `flash-term` background-color effect (OSC 11). It restores Kitty's current background when remote control is available, or resets to the terminal's configured background otherwise. Inside Herdr, it draws and removes a temporary Kitty graphics overlay without changing pane colors; enable `experimental.kitty_graphics = true` in Herdr's configuration. Explicit previews work even when automatic alerts are muted and do not show sprites. Omit `--flash` for sound only. Background jobs without a terminal report an error.
 
 ## Commands
 
@@ -113,6 +113,8 @@ python3 tests/test_plugin.py
 ```
 
 The integration check compiles the Rust executable, then tests Bash/Zsh commands, settings, downloads, compatibility aliases, and playback errors with stubs. It does not play audio or download sound packs. Build locally with `sh scripts/build/install.sh`. Cargo dependencies are pinned in `Cargo.lock`.
+
+`tests/test_flash_visual.py` checks actual rendered pixels in an X11 desktop with Herdr and Kitty. Run it with an explicit test pane and crop, as shown in the script's help, to verify the flash appears and the background is restored.
 
 ## License
 

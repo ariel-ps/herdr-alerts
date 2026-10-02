@@ -6,19 +6,19 @@ All notable changes to Herdr Alerts are documented here.
 
 ### Fixed
 
-- Fall back to the pane's terminal when Herdr lacks the graphics API, including
-  Herdr 0.9.3; report server error messages for other graphics failures.
+- Reuse the original `flash-term` background effect outside Herdr and the
+  existing sprite renderer's Kitty protocol inside Herdr. Remove the unsupported
+  graphics API and invisible visual-bell fallback; verify rendered pixels.
 - Accept Herdr's workspace-qualified pane IDs (for example, `wN:p3`) when
   flashing panes through manual previews or automatic alerts.
 
 ### Added
 
 - `herdr-sound play [NAME] --flash` and `alert8play [NAME] --flash` preview
-  sound with two terminal flashes, or green pane flashes when inside Herdr.
+  sound with four green flashes, using the original flash-term timing.
 - Terminal previews work without a running Herdr instance and keep escape
   sequences out of redirected logs.
-- Manual previews and automatic alerts share pane-flash rendering, with
-  connection/error checks and a final cleanup attempt.
+- Manual previews and automatic alerts share flash rendering and cleanup.
 
 ### Changed
 
