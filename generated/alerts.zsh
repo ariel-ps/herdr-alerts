@@ -1,8 +1,8 @@
-# alerts-generated.zsh — GENERATED from sounds/packs.json. Do not edit.
-# Regenerate with scripts/gen-alert-tables.py; the plugin's [[build]] step does.
+# GENERATED from data/packs.json — DO NOT EDIT.
+# Regenerate with scripts/build/gen-alert-tables.py; the plugin's [[build]] step does.
 #
-# Sourced by alert-hook.sh. Committed rather than built on demand so a checkout
-# that was linked instead of installed — no [[build]] run — still has a table.
+# Sourced by hooks/on-pane-agent-status-changed-alert.zsh. Committed rather than
+# built on demand so a linked checkout with no [[build]] run still has a table.
 
 # name -> game, clip basename (empty = any clip from the game),
 # sprite basename (empty = any sprite from the game).
@@ -34,7 +34,7 @@ __herdr_alert_spec() {
   esac
 }
 
-# Every name, for `alert-hook.sh --list` and for tab completion.
+# Every name, for the hook's `--list` mode and for tab completion.
 __herdr_alert_names() {
   print -r -- 'unit-ready tesla harvester orca kaboom redalert win 1up coin powerup die gameover waiting dk barrel punchout spin codec kirby'
 }

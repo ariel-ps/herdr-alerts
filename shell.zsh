@@ -1,5 +1,5 @@
 # Source this file from zsh to load this plugin's commands.
-typeset -g _HERDR_ALERTS_ROOT="${0:A:h}"
+typeset -g _HERDR_ALERTS_ROOT="${HERDR_PLUGIN_ROOT:-${0:A:h}}"
 typeset -U path
 path=("$_HERDR_ALERTS_ROOT/bin" $path)
 
@@ -19,7 +19,7 @@ herdr-sounds-sync() { "$_HERDR_ALERTS_ROOT/bin/herdr-sound" sync "$@"; }
 __herdr_sounds_sync() {
   local root; root=$_HERDR_ALERTS_ROOT
   local cache="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit"
-  local map="$root/sounds/packs.json"
+  local map="$root/data/packs.json"
 
   command -v jq >/dev/null 2>&1 || { echo "herdr: jq not found" >&2; return 1; }
   command -v uv >/dev/null 2>&1 || { echo "herdr-sound: uv is required to download sound packs" >&2; return 1; }
@@ -39,9 +39,9 @@ __herdr_sounds_sync() {
       # This game's clips live inside its own encrypted MIX archives, so it
       # needs a different fetcher and Blowfish — hence uv rather than python3.
       uv run --no-project --with pycryptodome python \
-        "$root/scripts/fetch-redalert-sounds.py" "$cache/sounds/$game" || rc=1
+        "$root/libexec/fetch-redalert-sounds.py" "$cache/sounds/$game" || rc=1
     else
-      uv run --no-project python "$root/scripts/fetch-game-sounds.py" "$id" "$cache/sounds/$game" || rc=1
+      uv run --no-project python "$root/libexec/fetch-game-sounds.py" "$id" "$cache/sounds/$game" || rc=1
     fi
   done
   return $rc

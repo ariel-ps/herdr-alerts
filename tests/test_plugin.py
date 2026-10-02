@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -15,8 +17,68 @@ def check():
         home = Path(temporary)
         plugin = home / 'plugin copy'
         shutil.copytree(ROOT, plugin, ignore=shutil.ignore_patterns('.git', '__pycache__'))
+        required = [
+            'CHANGELOG.md', 'SECURITY.md',
+            'hooks/on-pane-agent-status-changed-alert.zsh',
+            'bin/alert8play', 'bin/herdr-sound',
+            'libexec/herdr-play-sound', 'libexec/fetch-game-sounds.py',
+            'libexec/fetch-redalert-sounds.py',
+            'scripts/build/gen-alert-tables.py',
+            'scripts/build/generate-8bit-alert.py',
+            'scripts/dev/fetch-sprites.py',
+            'scripts/dev/fetch-redalert-sprites.py',
+            'data/packs.json', 'generated/alerts.zsh',
+            'assets/audio/8bit-alert.wav',
+            'vendor/sprite/sprite.pl', 'vendor/sprite/ORIGIN.md',
+        ]
+        assert all((plugin / path).exists() for path in required)
+        assert os.access(plugin / 'hooks/on-pane-agent-status-changed-alert.zsh', os.X_OK)
+        assert os.access(plugin / 'bin/alert8play', os.X_OK)
+        assert os.access(plugin / 'bin/herdr-sound', os.X_OK)
+        generated = plugin / 'generated/alerts.zsh'
+        assert generated.read_text().startswith('# GENERATED')
+        assert 'DO NOT EDIT' in generated.read_text().splitlines()[0]
+        committed_generated = generated.read_bytes()
+        manifest = tomllib.loads((plugin / 'herdr-plugin.toml').read_text())
+        assert manifest['id'] == 'dev.ariel.herdr-alerts'
+        assert manifest['build'] == [
+            {'command': ['sh', './scripts/build/generate-alert-tables.sh']}]
+        assert manifest['events'] == [{
+            'on': 'pane.agent_status_changed',
+            'command': ['zsh', './hooks/on-pane-agent-status-changed-alert.zsh'],
+        }]
+        assert manifest['actions'] == [
+            {'id': 'alerts', 'title': 'List the named alerts',
+             'command': ['./bin/herdr-sound', 'list']},
+            {'id': 'play', 'title': 'Preview alert sound',
+             'command': ['./bin/herdr-sound', 'play'],
+             'contexts': ['pane', 'workspace']},
+        ]
+
         result = subprocess.run(
-            ['zsh', '-fc', 'plugin=$1; source "$plugin/shell.zsh"; zsh "$plugin/alert-hook.sh" --list', 'check', str(plugin)],
+            ['python3', str(plugin / 'scripts/build/gen-alert-tables.py')],
+            cwd=home, text=True, capture_output=True)
+        assert result.returncode == 0, result.stderr
+        assert generated.read_bytes() == committed_generated
+
+        build_tools = home / 'build tools'
+        build_tools.mkdir()
+        (build_tools / 'sh').symlink_to('/bin/sh')
+        (build_tools / 'python3').symlink_to(sys.executable)
+        (build_tools / 'dirname').symlink_to(shutil.which('dirname'))
+        generated.write_text('# stale generated table\n')
+        result = subprocess.run(
+            manifest['build'][0]['command'], cwd=plugin,
+            env={**os.environ, 'PATH': str(build_tools)},
+            text=True, capture_output=True)
+        assert result.returncode == 0, result.stderr
+        assert generated.read_bytes() == committed_generated
+
+        result = subprocess.run(
+            ['zsh', '-fc',
+             'plugin=$1; source "$plugin/shell.zsh"; '
+             'zsh "$plugin/hooks/on-pane-agent-status-changed-alert.zsh" --list',
+             'check', str(plugin)],
             env={**os.environ, 'HOME': str(home), 'XDG_CONFIG_HOME': str(home / 'config'),
                  'XDG_CACHE_HOME': str(home / 'cache')}, text=True, capture_output=True)
         assert result.returncode == 0, result.stderr
@@ -24,7 +86,7 @@ def check():
 
         # Exercise the installed command without sending sound to the host device.
         recorded = home / 'playback'
-        (plugin / 'bin/herdr-play-sound').write_text(
+        (plugin / 'libexec/herdr-play-sound').write_text(
             '#!/bin/sh\nprintf "%s\\n" "$@" > "$PLAYBACK_LOG"\nexit "${PLAYBACK_EXIT:-0}"\n')
         config = home / 'config/herdr/plugins/config/dev.ariel.herdr-alerts'
         config.mkdir(parents=True)
@@ -44,7 +106,7 @@ def check():
             assert result.returncode == 0, result.stderr
             assert result.stdout.strip() == 'Playing included tone...', result.stdout
             assert recorded.read_text().splitlines() == [
-                str(plugin.resolve() / 'sounds/8bit-alert.wav'), '0.4', '0.5']
+                str(plugin.resolve() / 'assets/audio/8bit-alert.wav'), '0.4', '0.5']
             recorded.unlink()
             for args, status in [(('--list',), 0), (('--help',), 0), (('--bad',), 2),
                                  (('one', 'two'), 2), (('unknown-alert',), 1), (('tesla',), 1)]:
@@ -114,7 +176,7 @@ def check():
         assert invoke('sync', 'mario', extra_env={**sync_env, 'SYNC_EXIT': '7'}, command='herdr-sound').returncode == 1
         sync_log.unlink()
         assert invoke('sync', extra_env=sync_env, command='herdr-sound').returncode == 0
-        packs = json.loads((plugin / 'sounds/packs.json').read_text())['games']
+        packs = json.loads((plugin / 'data/packs.json').read_text())['games']
         assert sync_log.read_text().splitlines().count('run') == sum(
             isinstance(spec, dict) and bool(spec.get('sounds')) for spec in packs.values())
         assert 'pycryptodome' in sync_log.read_text()
@@ -127,9 +189,10 @@ def check():
         assert (config / 'config.sh').read_text() == malformed
         (config / 'config.sh').write_text(initial_config)
         # Muting still suppresses automatic events.
-        result = subprocess.run(['zsh', str(plugin / 'alert-hook.sh')],
-                                env={**env, 'HERDR_PLUGIN_EVENT_JSON': '{"agent_status":"done"}'},
-                                text=True, capture_output=True)
+        result = subprocess.run(
+            ['zsh', str(plugin / 'hooks/on-pane-agent-status-changed-alert.zsh')],
+            env={**env, 'HERDR_PLUGIN_EVENT_JSON': '{"agent_status":"done"}'},
+            text=True, capture_output=True)
         assert result.returncode == 0, result.stderr
         assert not recorded.exists()
 
@@ -160,8 +223,8 @@ def check_player_errors():
         ffplay.chmod(0o755)
         env = {**os.environ, 'PATH': str(root)}
         for error, code, expected in [('', '0', 0), ('audio open failed\n', '0', 1), ('device failure\n', '7', 7)]:
-            result = subprocess.run(['/bin/sh', str(ROOT / 'bin/herdr-play-sound'),
-                                     str(ROOT / 'sounds/8bit-alert.wav'), '0.4', '0.5'],
+            result = subprocess.run(['/bin/sh', str(ROOT / 'libexec/herdr-play-sound'),
+                                     str(ROOT / 'assets/audio/8bit-alert.wav'), '0.4', '0.5'],
                                     env={**env, 'PLAYER_ERROR': error, 'PLAYER_EXIT': code}, text=True, capture_output=True)
             assert result.returncode == expected, result.stderr
             if expected:

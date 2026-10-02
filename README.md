@@ -93,8 +93,37 @@ If a named sound is missing, run `herdr-sound download PACK` using the pack show
 
 ## Development
 
-Run `python3 tests/test_plugin.py`. Checks cover bash/zsh commands, settings, download dispatch, compatibility aliases, and playback errors using stubs. They do not play audio or download packs.
+`data/packs.json` is the hand-authored alert catalog. Regenerate its committed
+shell lookup after editing it:
+
+```sh
+python3 scripts/build/gen-alert-tables.py
+```
+
+The output, `generated/alerts.zsh`, starts with a generated/do-not-edit marker.
+The event adapter lives in `hooks/`, private playback and download helpers live
+in `libexec/`, and only the stable `alert8play` and `herdr-sound` commands live
+in `bin/`. Sprite acquisition under `scripts/dev/` is maintainer tooling and is
+not called at runtime.
+
+Run `python3 tests/test_plugin.py`. Checks cover relocated paths containing
+spaces, bash/zsh commands, settings, download dispatch, compatibility aliases,
+generated data, and playback errors using stubs. They do not play audio or
+download packs.
+
+To generate a replacement included tone:
+
+```sh
+python3 scripts/build/generate-8bit-alert.py assets/audio/8bit-alert.wav --seed SEED
+```
+
+See [SECURITY.md](SECURITY.md) for private vulnerability reporting and
+[CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 
-Original project code is licensed under the [MIT License](LICENSE). Third-party code and media retain their own terms; this license does not grant rights to game assets, downloaded themes, or other third-party content.
+Original project code and the generated included tone are licensed under the
+[MIT License](LICENSE). Third-party code and media retain their own terms; this
+license does not grant rights to game assets, downloaded themes, or other
+third-party content. Known provenance limits for the sprite renderer are
+documented in [vendor/sprite/ORIGIN.md](vendor/sprite/ORIGIN.md).

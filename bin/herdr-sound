@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(os.environ.get('HERDR_PLUGIN_ROOT') or Path(__file__).resolve().parents[1]).resolve()
 BEGIN = '# >>> herdr-sound >>>'
 END = '# <<< herdr-sound <<<'
 
@@ -97,9 +97,10 @@ Run herdr-sound COMMAND --help for command details.''')
     env = {**os.environ, 'HERDR_PLUGIN_ROOT': str(ROOT)}
     if args.command in ('play', 'list', 'status'):
         extra = [args.name] if args.command == 'play' and args.name else []
-        return subprocess.call(['zsh', str(ROOT / 'alert-hook.sh'), '--' + args.command, *extra], env=env)
+        hook = ROOT / 'hooks/on-pane-agent-status-changed-alert.zsh'
+        return subprocess.call(['zsh', str(hook), '--' + args.command, *extra], env=env)
     if args.command == 'download':
-        packs = {name: spec for name, spec in json.loads((ROOT / 'sounds/packs.json').read_text())['games'].items()
+        packs = {name: spec for name, spec in json.loads((ROOT / 'data/packs.json').read_text())['games'].items()
                  if isinstance(spec, dict) and spec.get('sounds')}
         unknown = [name for name in args.games if name not in packs]
         if unknown:
@@ -107,7 +108,7 @@ Run herdr-sound COMMAND --help for command details.''')
         return subprocess.call(['zsh', '-fc', 'source "$1/shell.zsh"; shift; __herdr_sounds_sync "$@"',
                                 'herdr-sound', str(ROOT), *(args.games or list(packs))], env=env)
     if args.command == 'set':
-        alerts = json.loads((ROOT / 'sounds/packs.json').read_text())['alerts']
+        alerts = json.loads((ROOT / 'data/packs.json').read_text())['alerts']
         if not isinstance(alerts.get(args.name), dict) or 'game' not in alerts[args.name]:
             parser.error(f'Unknown sound: {args.name}. Run herdr-sound list.')
         # A literal file override otherwise takes priority over the chosen name.

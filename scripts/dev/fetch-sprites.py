@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the sprite packs kitty-sprite.pl animates, one directory per game.
+"""Build the sprite packs vendor/sprite/sprite.pl animates, one per game.
 
 Each game's art comes from a project that ships both the sprite sheet and the
 frame data describing it, so nothing here guesses at where a frame starts:
@@ -10,7 +10,7 @@ frame data describing it, so nothing here guesses at where a frame starts:
   punchout  justin-austria/PunchOut       frame rects in lib/js/entities/*.js
   redalert  the game's own MIX archives   (see fetch-redalert-sprites.py)
 
-Pack format, read by kitty-sprite.pl's load_pack: u16 frames, u16 w, u16 h,
+Pack format, read by sprite.pl's load_pack: u16 frames, u16 w, u16 h,
 u16 pad, then frames * w * h * 4 bytes of RGBA. Frames are square and share one
 bounding box per pack — trimming each frame to its own content would make the
 sprite jitter as it animates.
@@ -28,13 +28,13 @@ from pathlib import Path
 
 from PIL import Image
 
-SIZE = 40          # packs are built at 40px; kitty-sprite.pl scales on load
+SIZE = 40          # packs are built at 40px; sprite.pl scales on load
 
-CONFIG = Path(__file__).resolve().parent.parent / "sounds" / "packs.json"
+CONFIG = Path(__file__).resolve().parents[2] / "data" / "packs.json"
 
 
 def repos():
-    """game -> clone URL, from alerts.json. The per-game cutting below stays as
+    """game -> clone URL, from packs.json. The per-game cutting below stays as
     code: it is frame geometry, not policy, and reads worse as data."""
     games = json.loads(CONFIG.read_text())["games"]
     return {g: spec["sprites"].split(":", 1)[1]

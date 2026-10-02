@@ -6,19 +6,19 @@ description = "Sound, flash and optional sprites when agents finish or need atte
 platforms = ["macos", "linux"]
 
 [[build]]
-command = ["sh","-c","if command -v uv >/dev/null 2>&1; then uv run --no-project python scripts/gen-alert-tables.py; else python3 scripts/gen-alert-tables.py; fi || echo 'alerts: kept the committed table'"]
+command = ["sh", "./scripts/build/generate-alert-tables.sh"]
 
 [[events]]
 on = "pane.agent_status_changed"
-command = ["zsh","./alert-hook.sh"]
+command = ["zsh", "./hooks/on-pane-agent-status-changed-alert.zsh"]
 
 [[actions]]
 id = "alerts"
 title = "List the named alerts"
-command = ["./bin/herdr-sound","list"]
+command = ["./bin/herdr-sound", "list"]
 
 [[actions]]
 id = "play"
 title = "Preview alert sound"
-command = ["./bin/herdr-sound","play"]
+command = ["./bin/herdr-sound", "play"]
 contexts = ["pane", "workspace"]
