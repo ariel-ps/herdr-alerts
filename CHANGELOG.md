@@ -14,8 +14,9 @@ All notable changes to Herdr Alerts are documented here.
 
 ### Added
 
-- `herdr-sound play [NAME] --flash` and `alert8play [NAME] --flash` preview
-  sound with four green flashes, using the original flash-term timing.
+- `herdr-sound set flash on|off` saves a shared preference for previews and
+  automatic alerts. Flashing defaults to on; no playback flag is needed.
+- Previews flash green four times, using the original flash-term timing.
 - Terminal previews work without a running Herdr instance and keep escape
   sequences out of redirected logs.
 - Manual previews and automatic alerts share flash rendering and cleanup.

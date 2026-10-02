@@ -23,16 +23,17 @@ const HELP: &str = "Herdr Sound — alerts for your coding agents.
 Usage: herdr-sound COMMAND [OPTIONS]
 
 Commands:
-  play [NAME] [--flash] Preview a sound; optionally flash the calling terminal
+  play [NAME]          Preview a sound using your flash setting
   list                  Browse sounds and download availability
   download [PACK ...]   Download selected packs, or all sound packs
   set blocked|done NAME Choose an automatic alert sound
+  set flash on|off     Save the flash setting for previews and automatic alerts
   enable / disable     Enable or mute automatic alerts
   status               Check settings and audio backend
 
 Quick start:
   herdr-sound play
-  herdr-sound play --flash
+  herdr-sound set flash on
   herdr-sound download mario
   herdr-sound play 1up
   herdr-sound set done 1up
@@ -288,6 +289,11 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
             "enabled (requires the plugin to be enabled)"
         }
     );
+    println!(
+        "  {:<18} {}",
+        "Flash",
+        if config.flash_enabled() { "on" } else { "off" }
+    );
     let duration = config.get("HERDR_ALERT_MAX_SECONDS");
     println!(
         "  {:<18} {}\n\nAlerts\n  {:<10} {:<8} SOUND",
@@ -349,7 +355,7 @@ fn execute(mut args: Vec<String>) -> Result<()> {
         match args.first().map(String::as_str) {
             Some("--list") if args.len() == 1 => args = vec!["list".into()],
             Some("--help" | "-h") if args.len() == 1 => {
-                println!("usage: alert8play [NAME] [--flash]\n       alert8play --list | --help\nCompatibility command for herdr-sound play.");
+                println!("usage: alert8play [NAME]\n       alert8play --list | --help\nCompatibility command for herdr-sound play.\nFlash setting: herdr-sound set flash on|off");
                 return Ok(());
             }
             _ => args.insert(0, "play".into()),
@@ -392,6 +398,8 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                     return Err(usage("usage: herdr-sound play [NAME] [--flash]"));
                 }
             }
+            let config = settings::Config::load(&root)?;
+            flash |= config.flash_enabled();
             let pane = env::var("HERDR_PANE_ID").unwrap_or_default();
             if flash
                 && !pane
@@ -402,7 +410,6 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                     "invalid HERDR_PANE_ID; unset it when running outside Herdr.",
                 ));
             }
-            let config = settings::Config::load(&root)?;
             let path = if let Some(name) = name {
                 Catalog::load(&root)?.resolve(name)?
             } else {
@@ -464,6 +471,16 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                     "disabled. Manual previews still work."
                 }
             );
+            Ok(())
+        }
+        "set" if args.len() == 3 && args[1] == "flash" => {
+            let value = match args[2].as_str() {
+                "on" => "1",
+                "off" => "0",
+                _ => return Err(usage("usage: herdr-sound set flash on|off")),
+            };
+            settings::save(&root, &[("HERDR_ALERT_FLASH".into(), value.into())])?;
+            println!("Flash {} (previews and automatic alerts).", args[2]);
             Ok(())
         }
         "set" if args.len() == 3 && ["blocked", "done"].contains(&args[1].as_str()) => {

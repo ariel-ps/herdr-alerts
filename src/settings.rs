@@ -20,6 +20,7 @@ const KEYS: &[&str] = &[
     "HERDR_VOLUME_DONE",
     "HERDR_ALERT_MAX_SECONDS",
     "HERDR_ALERT_OFF",
+    "HERDR_ALERT_FLASH",
 ];
 
 fn target() -> Result<PathBuf> {
@@ -75,6 +76,9 @@ impl Config {
     }
     pub fn get(&self, key: &str) -> &str {
         self.0.get(key).map(String::as_str).unwrap_or("")
+    }
+    pub fn flash_enabled(&self) -> bool {
+        matches!(self.get("HERDR_ALERT_FLASH"), "" | "1")
     }
 }
 

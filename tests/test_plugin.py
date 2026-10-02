@@ -112,7 +112,7 @@ exit "${PLAYBACK_EXIT:-0}"
             stub.chmod(0o755)
         config = home / 'config/herdr/plugins/config/dev.ariel.herdr-alerts'
         config.mkdir(parents=True)
-        initial_config = '# Keep this comment\nCUSTOM_SETTING=preserved\nHERDR_VOLUME_DONE=0.4\nHERDR_ALERT_MAX_SECONDS=0.5\nHERDR_ALERT_OFF=1\n'
+        initial_config = '# Keep this comment\nCUSTOM_SETTING=preserved\nHERDR_VOLUME_DONE=0.4\nHERDR_ALERT_MAX_SECONDS=0.5\nHERDR_ALERT_OFF=1\nHERDR_ALERT_FLASH=0\n'
         (config / 'config.sh').write_text(initial_config)
         env = {**os.environ, 'HOME': str(home), 'XDG_CONFIG_HOME': str(home / 'config'),
                'XDG_CACHE_HOME': str(home / 'cache'), 'PLAYBACK_LOG': str(recorded),
@@ -307,12 +307,27 @@ printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
         env = {**os.environ, 'HOME': temporary, 'XDG_CONFIG_HOME': temporary,
                'HERDR_PLUGIN_CONFIG_DIR': '', 'HERDR_PLUGIN_ROOT': str(ROOT),
                'HERDR_PANE_ID': '', 'PATH': str(herdr) + ':' + temporary + ':' + os.environ['PATH']}
-        for shell, command, term, audio_exit, pane in [
-            ('bash', 'alert8play', 'xterm-256color', '0', ''),
-            ('zsh', 'herdr-sound', 'xterm-256color', '7', ''),
-            ('bash', 'alert8play', 'dumb', '0', ''),
-            ('bash', 'alert8play', 'xterm-256color', '0', 'wN:p3'),
+        env.pop('KITTY_WINDOW_ID', None)
+        binary = str(ROOT / 'bin/herdr-sound')
+        config = home / 'herdr/plugins/config/dev.ariel.herdr-alerts/config.sh'
+        for shell, command, term, audio_exit, pane, preference in [
+            ('bash', 'alert8play', 'xterm-256color', '0', '', 'on'),
+            ('zsh', 'herdr-sound', 'xterm-256color', '7', '', 'on'),
+            ('bash', 'alert8play', 'dumb', '0', '', 'on'),
+            ('bash', 'alert8play', 'xterm-256color', '0', 'wN:p3', 'on'),
+            ('bash', 'alert8play', 'xterm-256color', '0', 'wN:p3', 'off'),
+            ('zsh', 'herdr-sound', 'xterm-256color', '0', '', 'off'),
         ]:
+            result = subprocess.run([binary, 'set', 'flash', preference], env=env,
+                                    text=True, capture_output=True)
+            assert result.returncode == 0, result.stderr
+            assert f"HERDR_ALERT_FLASH='{int(preference == 'on')}'" in config.read_text()
+            result = subprocess.run([binary, 'status'], env=env, text=True, capture_output=True)
+            assert result.returncode == 0, result.stderr
+            assert any(line.split() == ['Flash', preference] for line in result.stdout.splitlines())
+            saved = config.read_bytes()
+            result = subprocess.run([binary, 'set', 'flash', 'invalid'], env=env, capture_output=True)
+            assert result.returncode == 2 and config.read_bytes() == saved
             log = home / 'output.log'
             pid, terminal = pty.fork()
             if pid == 0:
@@ -321,7 +336,6 @@ printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
                 args = [str(ROOT / 'bin' / command)]
                 if command == 'herdr-sound':
                     args.append('play')
-                args.append('--flash')
                 os.execvpe(shell, [shell, '-fc', '"$@"', 'check', *args],
                            {**env, 'TERM': term, 'PLAYBACK_EXIT': audio_exit,
                             'HERDR_PANE_ID': pane, 'FLASH_SHELL_PID': str(os.getpid())})
@@ -351,7 +365,9 @@ printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
             assert os.waitstatus_to_exitcode(status) == int(audio_exit), captured
             assert '\033' not in log.read_text(), log.read_text()
             assert 'Playing included tone' in log.read_text()
-            if pane:
+            if preference == 'off':
+                assert b'\x1b' not in captured, captured
+            elif pane:
                 assert captured.count(b'\x1b_Ga=T') == 4, captured
                 assert captured.count(b'\x1b_Ga=d,d=I') == 5, captured
                 encoded_green = base64.b64encode(bytes([0, 204, 68, 255]) * 64)

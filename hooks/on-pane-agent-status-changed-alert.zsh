@@ -33,9 +33,10 @@
 #   HERDR_ALERT_MAX_SECONDS     cap a clip, default 3, empty plays it in full
 #   SPRITE_NAME=<name>          override the sprite the alert chose
 #
-# Manual previews play sound only unless --flash is requested:
+# Manual previews use the same saved flash setting:
 #   herdr-sound list
-#   herdr-sound play tesla --flash
+#   herdr-sound set flash on
+#   herdr-sound play tesla
 
 emulate -L zsh
 setopt pipefail

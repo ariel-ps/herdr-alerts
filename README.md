@@ -5,8 +5,8 @@
 Herdr Alerts plays a sound and flashes the affected pane when an agent finishes or becomes blocked. Its Rust CLI previews sounds and manages settings. An included tone works immediately; optional game packs let you choose your own alert sounds.
 
 ```sh
-herdr-sound play                  # Test your speakers
-herdr-sound play --flash          # Also flash your terminal
+herdr-sound play                 # Play a tone and flash your terminal
+herdr-sound set flash off        # Prefer sound only
 herdr-sound download mario       # Get a sound pack
 herdr-sound set done 1up         # Use it when an agent finishes
 ```
@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/ariel-ps/herdr-setup/main/install.s
 
 You need internet access, `curl`, and `tar`. macOS also needs Homebrew and its command-line build tools; Linux needs `apt-get` or `dnf`, with sudo or root access. Herdr does not need to be installed already.
 
-Open a new terminal, then run `herdr-sound play`. You should hear a short tone; no sound-pack download is required.
+Open a new terminal, then run `herdr-sound play`. You should hear a short tone and see four green flashes; no sound-pack download is required.
 
 <details>
 <summary>Install only this plugin into an existing Herdr installation</summary>
@@ -53,24 +53,25 @@ herdr-sound set blocked tesla
 
 Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Automatic alerts also flash the pane and can show sprites when the corresponding assets are available.
 
-Run `herdr-sound play --flash` or `alert8play --flash` from your terminal for sound and four green flashes. Herdr does not need to be running. Named sounds work too: `herdr-sound play 1up --flash`.
+Flashing is on by default. Run `herdr-sound set flash off` for sound only, or `herdr-sound set flash on` to enable it. This preference is saved for manual previews (`herdr-sound play` and `alert8play`) and automatic alerts. Herdr does not need to be running for terminal previews.
 
-Outside Herdr, this uses the original `flash-term` background-color effect (OSC 11). It restores Kitty's current background when remote control is available, or resets to the terminal's configured background otherwise. Inside Herdr, it draws and removes a temporary Kitty graphics overlay without changing pane colors; enable `experimental.kitty_graphics = true` in Herdr's configuration. Explicit previews work even when automatic alerts are muted and do not show sprites. Omit `--flash` for sound only. Background jobs without a terminal report an error.
+Outside Herdr, this uses the original `flash-term` background-color effect (OSC 11). It restores Kitty's current background when remote control is available, or resets to the terminal's configured background otherwise. Inside Herdr, it draws and removes a temporary Kitty graphics overlay without changing pane colors; enable `experimental.kitty_graphics = true` in Herdr's configuration. Explicit previews work even when automatic alerts are muted and do not show sprites. For background jobs without a terminal, turn flashing off.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `herdr-sound play [NAME] [--flash]` | Preview a sound; optionally flash your terminal or Herdr pane |
+| `herdr-sound play [NAME]` | Preview a sound using your saved flash setting |
 | `herdr-sound list` | Browse sounds and see which are ready |
 | `herdr-sound download [PACK ...]` | Download selected packs; omit PACK to download all sound packs |
 | `herdr-sound set blocked NAME` | Choose the needs-attention sound |
 | `herdr-sound set done NAME` | Choose the finished sound |
+| `herdr-sound set flash on\|off` | Save the flash preference for previews and automatic alerts |
 | `herdr-sound enable` | Enable automatic alerts |
 | `herdr-sound disable` | Mute automatic alerts; manual previews still work |
 | `herdr-sound status` | Show settings, sound availability, and audio backend |
 
-Run `herdr-sound COMMAND --help` for details. The aliases `sync`, `on`, and `off`, and the older `alert8play` and `herdr-sounds-sync` commands still work. `alert8play [NAME] --flash` previews the same sound and visual effect.
+Run `herdr-sound COMMAND --help` for details. The aliases `sync`, `on`, and `off`, and the older `alert8play` and `herdr-sounds-sync` commands still work. `alert8play [NAME]` uses the same sound and flash settings.
 
 ## Settings
 
@@ -86,9 +87,10 @@ Edit or create `config.sh` there to adjust volume or clip duration:
 HERDR_VOLUME_BLOCKED=1.8
 HERDR_VOLUME_DONE=1.0
 HERDR_ALERT_MAX_SECONDS=3
+HERDR_ALERT_FLASH=1  # 0 for sound only
 ```
 
-Previews use the done-volume and duration settings. The CLI saves sound choices and enabled state in a marked section at the end of this file, backing up existing settings. `set` also clears that event's custom file override.
+Previews use the done-volume and duration settings. The CLI saves sound choices, flash preference, and enabled state in a marked section at the end of this file, backing up existing settings. `set blocked` and `set done` also clear that event's custom file override.
 
 ## No sound?
 
