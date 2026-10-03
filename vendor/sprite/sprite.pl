@@ -177,11 +177,11 @@ sub play_once {
     my ($out) = @_;
     my $spent = 0;
     if ($pack_frames) {
-        # Cap the run: some animations are 111 frames, which is a lot longer
-        # than anyone wants an alert to sit on screen.
-        my $n = @$pack_frames > 16 ? 16 : scalar @$pack_frames;
+        # Repeat short packs so two-frame sprites don't vanish in 110ms;
+        # cap long packs at the same roughly one-second animation interval.
+        my $n = 16;
         for my $i (0 .. $n - 1) {
-            send_frame($out, $pack_frames->[$i], $id, 1, $col);
+            send_frame($out, $pack_frames->[$i % @$pack_frames], $id, 1, $col);
             select(undef, undef, undef, $DELAY);
             $spent += $DELAY;
         }
@@ -203,7 +203,7 @@ sub play_once {
 # Keep the animation running as an "I finished, you weren't here" marker and
 # clear it when you come back. kitty has no keystroke event (see
 # kitty-flash-watcher.py), so focus is the closest signal to "you typed in this
-# pane". Starting in a focused pane is not a new focus event.
+# pane". A focused pane clears after one animation.
 # `kitty @ ls --match` still prints the whole OS-window/tab tree, so this walks
 # to the window itself rather than pattern-matching the blob. JSON::PP is core.
 #
@@ -244,10 +244,12 @@ sub window_focused {
     return defined($outer) ? $outer : 1;
 }
 
-# Every alert waits for a return to its pane, including play/menu previews.
+# Always show one animation, then wait only if the pane is unfocused. Checking
+# afterwards also catches switching away while a manual preview is playing.
+play_once($fh);
 my $loop = $ENV{SPRITE_PERSIST} // 1;
 my $focused = $loop ? window_focused() : undef;
-my $persist = $loop && defined($focused);
+my $persist = $loop && defined($focused) && !$focused;
 warn "herdr-alert: focus tracking is unavailable; sprite will play once.\n"
     if $loop && !defined($focused);
 
@@ -260,15 +262,13 @@ if ($persist) {
     my $ttl = $ENV{SPRITE_TTL} || 1800;
     my $gap = $ENV{SPRITE_LOOP_GAP} // 0.6;
     my $waited = 0;
-    my $was_unfocused = !$focused;
     open my $out, '>', $tty or exit 0;
     select((select($out), $| = 1)[0]);
     while ($waited < $ttl) {
         $waited += play_once($out);
         my $focused = window_focused();
         last unless defined($focused); # stop if the pane was closed
-        last if $was_unfocused && $focused;
-        $was_unfocused = 1 unless $focused;
+        last if $focused;
         select(undef, undef, undef, $gap);
         $waited += $gap;
     }
@@ -277,6 +277,5 @@ if ($persist) {
     exit 0;
 }
 
-play_once($fh);                              # one-shot or focus unavailable
 print $fh "\033_Ga=d,d=I,i=$id,q=2\033\\";   # delete image + placements
 close $fh;

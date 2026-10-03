@@ -62,9 +62,9 @@ herdr-alert play 1up
 ```
 
 The yellow circular animation is the built-in fallback, not downloaded game artwork.
-Sprites keep animating until you return to the affected pane, including `play`
-and menu previews. If it is already focused, switch to another pane and back to
-dismiss the sprite. Focus tracking uses Herdr's pane state, with Kitty window
+Sprites play for about a second and disappear when the affected pane is focused. If it is
+unfocused, they keep animating until you return. This applies to automatic alerts,
+`play`, and menu previews. Focus tracking uses Herdr's pane state, with Kitty window
 focus when available; a 30-minute limit prevents abandoned animations. Without
 focus tracking, or with `SPRITE_PERSIST=0`, sprites animate once.
 

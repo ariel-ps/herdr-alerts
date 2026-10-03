@@ -8,8 +8,9 @@ All notable changes to Herdr Alerts are documented here.
 
 - Download sprite artwork alongside sounds so fresh installations can show game
   sprites. `download --sprites` repairs installations that already have audio.
-- Keep sprites visible until focus returns to their Herdr pane, including manual
-  and menu previews. An already-focused pane must lose and regain focus.
+- Clear sprites after one animation in focused panes. Unfocused panes keep them
+  until focus returns, including manual and menu previews.
+- Repeat short sprite packs for about a second instead of briefly flashing two frames.
 - Extract the Red Alert palette from OpenRA's verified base package instead of requiring an
   unshipped local palette file.
 - Read Herdr's event `data` envelope so automatic sounds, flashes, and blocked

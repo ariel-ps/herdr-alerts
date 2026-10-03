@@ -87,32 +87,40 @@ def check():
                     assert focused, 'Unfocused sprite did not keep animating'
                     assert b'\x1b_Ga=d,d=I,i=' + ids[0] + b',' in output, 'Sprite not cleared'
                     print(f'PASS: sprite persists until pane focus; envelope={"data" in event}, flash={flash}')
-            # The same focus lifecycle applies to play/menu previews. Starting
-            # in a focused pane must not count as returning to acknowledge it.
-            for state, initially_focused in [('preview', False), ('preview', True), ('blocked', True)]:
+            # Previews and automatic alerts share the same rule: focused panes
+            # play once; unfocused panes keep the sprite until focus returns.
+            for state, initially_focused, switch_away in [
+                ('preview', False, False), ('preview', True, False),
+                ('blocked', True, False), ('preview', True, True),
+            ]:
                 set_focus(initially_focused)
                 preview = subprocess.Popen(['zsh', str(plugin / 'libexec/herdr-visuals'),
                                             'w1:p1', state, '', '0', '1'], env=env)
                 output = b''
-                left = not initially_focused
                 returned = False
+                waits_for_return = not initially_focused or switch_away
                 deadline = time.monotonic() + 20
                 while time.monotonic() < deadline:
                     if select.select([master], [], [], .05)[0]:
                         output += os.read(master, 65536)
                         if b'\x1b_Ga=d,d=I,i=' in output:
-                            assert returned, f'{state} disappeared before focus returned'
+                            assert not waits_for_return or returned, f'{state} disappeared before focus returned'
                             break
                         count = len(re.findall(rb'\x1b_Ga=T,', output))
-                        if not left and count > 14:
+                        if switch_away and count >= 2:
                             set_focus(False)
-                            left = True
-                        elif left and not returned and count > (28 if initially_focused else 14):
+                            switch_away = False
+                        assert waits_for_return or count <= 14, f'{state} repeated in an already-focused pane'
+                        if waits_for_return and not returned and count > 14:
                             set_focus(True)
                             returned = True
                 assert preview.wait(timeout=3) == 0
-                assert returned and b'\x1b_Ga=d,d=I,i=' in output, 'Focus return did not clear sprite'
-                print(f'PASS: {state} waits for focus return; initially focused={initially_focused}')
+                assert b'\x1b_Ga=d,d=I,i=' in output, 'Focused sprite did not clear'
+                if not waits_for_return:
+                    assert len(re.findall(rb'\x1b_Ga=T,', output)) == 14
+                else:
+                    assert returned
+                print(f'PASS: {state} clears while focused; initially focused={initially_focused}')
             # Callers can still explicitly request a single animation.
             set_focus(False)
             preview = subprocess.Popen(['zsh', str(plugin / 'libexec/herdr-visuals'),
@@ -128,6 +136,19 @@ def check():
             assert len(re.findall(rb'\x1b_Ga=T,', output)) == 14
             assert b'\x1b_Ga=d,d=I,i=' in output, 'Preview did not clear'
             print('PASS: explicit one-shot animation clears')
+            # Real Mario packs have only two frames; they must remain visible
+            # for a full animation interval before focused-pane cleanup.
+            (home / 'short.rgba').write_bytes(
+                struct.pack('<4H', 2, 1, 1, 0) + bytes([255, 0, 0, 255, 0, 0, 255, 255]))
+            rendered = home / 'short-output'
+            started = time.monotonic()
+            subprocess.run(['perl', str(plugin / 'vendor/sprite/sprite.pl'), str(rendered), '80'],
+                           env={**env, 'SPRITE_DIR': temporary, 'SPRITE_NAME': 'short',
+                                'SPRITE_PERSIST': '0'}, check=True, timeout=5)
+            assert time.monotonic() - started >= .8
+            assert len(re.findall(rb'\x1b_Ga=T,', rendered.read_bytes())) == 16
+            assert b'\x1b_Ga=d,d=I,i=' in rendered.read_bytes()
+            print('PASS: short sprite packs remain visible for a full animation interval')
         finally:
             if 'focus' in locals():
                 set_focus(True)
