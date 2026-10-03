@@ -39,6 +39,7 @@ if [[ "$cols" != <1-> ]]; then
 fi
 
 export SPRITE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit/sprites"
+export SPRITE_PANE_ID="$pane"
 [[ -r "$root/generated/alerts.zsh" ]] && source "$root/generated/alerts.zsh"
 if typeset -f __herdr_alert_spec >/dev/null && __herdr_alert_spec "$name"; then
   export SPRITE_GAME="$alert_game"

@@ -211,7 +211,7 @@ sub play_once {
 # active window *of its tab*, so checking that alone reports "focused" for a
 # pane sitting in a hidden tab, or in a kitty that isn't even the frontmost
 # app — which is exactly when the sprite should still be running.
-sub window_focused {
+sub kitty_window_focused {
     my $wid = $ENV{KITTY_WINDOW_ID} or return;
     my $out = qx{kitty \@ ls 2>/dev/null} or return;
     my $data = eval { JSON::PP::decode_json($out) } or return;
@@ -227,15 +227,33 @@ sub window_focused {
     return;
 }
 
-# Focus-dependent looping is opt-in; ordinary alerts always clear on their own.
-my $focused = $ENV{SPRITE_PERSIST} ? window_focused() : undef;
-my $persist = ($ENV{SPRITE_PERSIST} // 0) && defined($focused) && !$focused;
+sub window_focused {
+    my $pane = $ENV{SPRITE_PANE_ID};
+    return kitty_window_focused() unless $pane;
+    # Herdr panes share the outer terminal window. Its focus alone cannot tell
+    # whether the user has returned to the pane that raised the alert.
+    open my $pipe, '-|', ($ENV{HERDR_BIN_PATH} || 'herdr'), 'pane', 'get', $pane
+        or return;
+    my $out = do { local $/; <$pipe> };
+    close $pipe or return;
+    my $data = eval { JSON::PP::decode_json($out) } or return;
+    my $focused = $data->{result}{pane}{focused};
+    return unless defined $focused;
+    return 0 unless $focused;
+    my $outer = kitty_window_focused();
+    return defined($outer) ? $outer : 1;
+}
+
+# Automatic alerts wait for focus; manual previews explicitly disable this.
+my $loop = $ENV{SPRITE_PERSIST} // 1;
+my $focused = $loop ? window_focused() : undef;
+my $persist = $loop && defined($focused) && !$focused;
 
 if ($persist) {
     close $fh;
     exit 0 if fork();                       # parent returns, sprite keeps going
     # Child: loop the animation until you arrive, then take it away. The focus
-    # check costs a `kitty @ ls`, so it runs once per pass rather than per frame
+    # check queries Herdr/Kitty, so it runs once per pass rather than per frame
     # — a pass is about a second, which is soon enough to feel instant.
     my $ttl = $ENV{SPRITE_TTL} || 1800;
     my $gap = $ENV{SPRITE_LOOP_GAP} // 0.6;
@@ -244,7 +262,8 @@ if ($persist) {
     select((select($out), $| = 1)[0]);
     while ($waited < $ttl) {
         $waited += play_once($out);
-        last if window_focused();
+        my $focused = window_focused();
+        last if !defined($focused) || $focused; # stop if the pane was closed
         select(undef, undef, undef, $gap);
         $waited += $gap;
     }

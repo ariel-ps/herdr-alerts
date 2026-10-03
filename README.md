@@ -62,7 +62,9 @@ herdr-alert play 1up
 ```
 
 The yellow circular animation is the built-in fallback, not downloaded game artwork.
-By default, sprites clear after one animation, including alerts in unfocused windows.
+Automatic sprites keep animating until you focus the affected pane. Manual previews
+clear after one animation. Focus tracking uses Herdr's pane state, with Kitty window
+focus when available; a 30-minute limit prevents abandoned animations.
 
 Flashing is on by default. Run `herdr-alert set flash off` to disable flashing, or `herdr-alert set flash on` to enable it. This preference is saved for manual previews (`herdr-alert play` and `alert8play`) and automatic alerts. Herdr does not need to be running for terminal previews.
 
