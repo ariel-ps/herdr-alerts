@@ -45,10 +45,17 @@ def check():
             response = json.dumps({'result': {'process_info': {'shell_pid': holder.pid}}})
             herdr.write_text("#!/bin/sh\nprintf '%s\\n' '" + response + "'\n")
             herdr.chmod(0o755)
+            kitty = tools / 'kitty'
+            kitty.write_text('''#!/bin/sh
+printf '%s\\n' '[{"is_focused":false,"tabs":[{"is_active":true,"windows":[{"id":123,"is_focused":true}]}]}]'
+''')
+            kitty.chmod(0o755)
             env = {**os.environ, 'HERDR_PLUGIN_ROOT': str(plugin),
-                   'HERDR_PLUGIN_CONFIG_DIR': temporary, 'SPRITE_PERSIST': '0',
+                   'HERDR_PLUGIN_CONFIG_DIR': temporary, 'KITTY_WINDOW_ID': '123',
+                   'SPRITE_TTL': '2', 'SPRITE_LOOP_GAP': '0',
                    'XDG_CACHE_HOME': str(home / 'cache'), 'HERDR_BIN_PATH': str(herdr),
                    'PATH': str(tools) + ':' + os.environ['PATH']}
+            env.pop('SPRITE_PERSIST', None)
             data = {'type': 'pane_agent_status_changed', 'pane_id': 'w1:p1',
                     'workspace_id': 'w1', 'agent_status': 'blocked', 'agent': 'codex'}
             # Real Herdr events wrap fields in data; old manual callers pass them directly.
@@ -70,6 +77,7 @@ def check():
                                 break
                     frames = re.findall(rb'\x1b_Ga=T,[^;]*z=1,[^;]*;([^\x1b]+)', output)
                     assert len(set(frames)) > 1, f'No animation: envelope={"data" in event}, flash={flash}'
+                    assert len(frames) == 14, 'Unfocused sprite repeated instead of clearing after one animation'
                     assert b'\x1b_Ga=d,d=I,i=' + ids[0] + b',' in output, 'Sprite not cleared'
                     print(f'PASS: animated sprite; envelope={"data" in event}, flash={flash}')
         finally:

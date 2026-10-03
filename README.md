@@ -7,7 +7,7 @@ Herdr Alerts plays a sound and flashes the affected pane when an agent finishes 
 ```sh
 herdr-alert play                 # Preview sound, flash, and sprite
 herdr-alert set flash off        # Disable flashing
-herdr-alert download mario       # Get a sound pack
+herdr-alert download mario       # Get sounds and sprite artwork
 herdr-alert set done 1up         # Use it when an agent finishes
 ```
 
@@ -53,6 +53,17 @@ herdr-alert set blocked tesla
 
 Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Automatic alerts also flash the pane and show sprites when an agent needs attention.
 
+Downloads include both sound and available sprite artwork. If you downloaded
+sounds with an older version, add the missing artwork without downloading audio again:
+
+```sh
+herdr-alert download --sprites mario redalert
+herdr-alert play 1up
+```
+
+The yellow circular animation is the built-in fallback, not downloaded game artwork.
+By default, sprites clear after one animation, including alerts in unfocused windows.
+
 Flashing is on by default. Run `herdr-alert set flash off` to disable flashing, or `herdr-alert set flash on` to enable it. This preference is saved for manual previews (`herdr-alert play` and `alert8play`) and automatic alerts. Herdr does not need to be running for terminal previews.
 
 Outside Herdr, this uses the original `flash-term` background-color effect (OSC 11). It restores Kitty's current background when remote control is available, or resets to the terminal's configured background otherwise. Inside Herdr, it draws and removes a temporary Kitty graphics overlay without changing pane colors; enable `experimental.kitty_graphics = true` in Herdr's configuration. Explicit previews work even when automatic alerts are muted. For background jobs without a terminal, turn both flash and sprite off.
@@ -65,7 +76,8 @@ Sprites are on by default for previews and blocked-agent alerts. Use `herdr-aler
 | --- | --- |
 | `herdr-alert play [NAME]` | Preview sound, flash, and sprite using your saved settings |
 | `herdr-alert list` | Browse sounds and see which are ready |
-| `herdr-alert download [PACK ...]` | Download selected packs; omit PACK to download all sound packs |
+| `herdr-alert download [PACK ...]` | Download sounds and available sprites; omit PACK for all packs |
+| `herdr-alert download --sprites [PACK ...]` | Download only sprite artwork |
 | `herdr-alert set blocked NAME` | Choose the needs-attention sound |
 | `herdr-alert set done NAME` | Choose the finished sound |
 | `herdr-alert set flash on\|off` | Save the flash preference for previews and automatic alerts |
@@ -110,12 +122,14 @@ The catalog is `data/packs.json`; regenerate the committed event lookup after ed
 python3 scripts/build/gen-alert-tables.py
 ```
 
-`src/` contains the Rust CLI. `bin/` contains its public launchers, `hooks/` contains the pane event adapter, and `libexec/` contains the compiled binary and private playback/download helpers. `generated/alerts.zsh` is the generated lookup. Sprite acquisition under `scripts/dev/` remains maintainer tooling.
+`src/` contains the Rust CLI. `bin/` contains its public launchers, `hooks/` contains the pane event adapter, and `libexec/` contains the compiled binary and private playback/download helpers. `generated/alerts.zsh` is the generated lookup. The old `scripts/dev/` sprite entry points delegate to the runtime downloaders.
 
 ```sh
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
 python3 tests/test_plugin.py
+python3 tests/test_sprite_events.py
+uv run --with pillow --with pycryptodome python tests/test_sprite_downloads.py
 ```
 
 The integration check compiles the Rust executable, then tests Bash/Zsh commands, settings, downloads, compatibility aliases, and playback errors with stubs. It does not play audio or download sound packs. Build locally with `sh scripts/build/install.sh`. Cargo dependencies are pinned in `Cargo.lock`.

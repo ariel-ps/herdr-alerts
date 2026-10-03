@@ -8,7 +8,7 @@
   ],
 
   "games": {
-    "_comment": "game -> where its media comes from. archive:<item> is an archive.org id, git:<url> a repo the sprite builder cuts frames out of, mix:<item> the game's own encrypted archives.",
+    "_comment": "game -> media sources. archive:<item> is an archive.org id, git:<url> a sprite source repo, mix:<item> encrypted game archives. HTTPS sprite ZIPs use sprites_sha256 for integrity.",
     "mario":     { "sounds": "archive:mario_nes_snes_sounds",
                    "sprites": "git:https://github.com/justinmeister/Mario-Level-1" },
     "mvdk":      { "sounds": "archive:131_20220817",
@@ -19,7 +19,9 @@
     "sonic":     { "sounds": "archive:sa-2-288",
                    "sprites": "git:https://github.com/clarkeadg/opensonic-js" },
     "kirby":     { "sounds": "archive:KirbyNIDL", "sprites": null },
-    "redalert":  { "sounds": "mix:main_20260628", "sprites": "mix:main_20260628" },
+    "redalert":  { "sounds": "mix:main_20260628",
+                   "sprites": "https://openra.baxxster.no/openra/ra-base.zip",
+                   "sprites_sha256": "4d3c14b2c6a00c042df16a99ff00ede8aa177e0d21a87cb43f84fbe73af56280" },
     "doom":      { "sounds": null,
                    "sprites": "git:https://github.com/Doom-Utils/shareware-collection" }
   },

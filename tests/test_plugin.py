@@ -30,6 +30,7 @@ def check():
             'bin/alert8play', 'bin/herdr-sound', 'bin/herdr-alert',
             'libexec/herdr-play-sound', 'libexec/fetch-game-sounds.py',
             'libexec/fetch-redalert-sounds.py',
+            'libexec/fetch-sprites.py', 'libexec/fetch-redalert-sprites.py',
             'scripts/build/gen-alert-tables.py',
             'scripts/build/generate-8bit-alert.py',
             'scripts/dev/fetch-sprites.py',
@@ -201,8 +202,17 @@ exit "${PLAYBACK_EXIT:-0}"
         result = invoke('download', 'mario', extra_env=sync_env, command='herdr-sound')
         assert result.returncode == 0, result.stderr
         assert 'fetch-game-sounds.py' in sync_log.read_text()
+        assert 'fetch-sprites.py' in sync_log.read_text()
         assert str(home / 'cache/herdr-kit/sounds/mario') in sync_log.read_text()
+        assert str(home / 'cache/herdr-kit/sprites') in sync_log.read_text()
         assert 'Downloading mario...' in result.stderr
+        sync_log.unlink()
+        assert invoke('download', '--sprites', 'mario', extra_env=sync_env, command='herdr-alert').returncode == 0
+        assert 'fetch-sprites.py' in sync_log.read_text() and 'fetch-game-sounds.py' not in sync_log.read_text()
+        sync_log.unlink()
+        assert invoke('download', '--sprites', 'metalgear', extra_env=sync_env, command='herdr-alert').returncode == 2
+        assert not sync_log.exists()
+        assert invoke('download', '--sprites', 'mario', extra_env={**sync_env, 'SYNC_EXIT': '7'}, command='herdr-alert').returncode == 1
         sync_log.unlink()
         assert invoke('mario', extra_env=sync_env, command='herdr-sounds-sync').returncode == 0
         assert 'fetch-game-sounds.py' in sync_log.read_text()
@@ -214,8 +224,11 @@ exit "${PLAYBACK_EXIT:-0}"
         assert invoke('sync', extra_env=sync_env, command='herdr-sound').returncode == 0
         packs = json.loads((plugin / 'data/packs.json').read_text())['games']
         assert sync_log.read_text().splitlines().count('run') == sum(
-            isinstance(spec, dict) and bool(spec.get('sounds')) for spec in packs.values())
+            (1 + bool(spec.get('sprites'))) for spec in packs.values()
+            if isinstance(spec, dict) and spec.get('sounds'))
         assert 'pycryptodome' in sync_log.read_text()
+        assert 'pillow' in sync_log.read_text()
+        assert 'fetch-redalert-sprites.py' in sync_log.read_text()
 
         # Refuse malformed managed settings without changing the user's file.
         malformed = initial_config + '# >>> herdr-sound >>>\n'

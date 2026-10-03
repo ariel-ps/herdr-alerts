@@ -6,6 +6,11 @@ All notable changes to Herdr Alerts are documented here.
 
 ### Fixed
 
+- Download sprite artwork alongside sounds so fresh installations can show game
+  sprites. `download --sprites` repairs installations that already have audio.
+- Clear automatic sprites after one animation, even in unfocused windows.
+- Extract the Red Alert palette from OpenRA's verified base package instead of requiring an
+  unshipped local palette file.
 - Read Herdr's event `data` envelope so automatic sounds, flashes, and blocked
   sprites actually run. Keep flat payloads working for manual callers.
 - Reuse the original `flash-term` background effect outside Herdr and the

@@ -227,8 +227,9 @@ sub window_focused {
     return;
 }
 
-my $focused = window_focused();
-my $persist = ($ENV{SPRITE_PERSIST} // 1) && defined($focused) && !$focused;
+# Focus-dependent looping is opt-in; ordinary alerts always clear on their own.
+my $focused = $ENV{SPRITE_PERSIST} ? window_focused() : undef;
+my $persist = ($ENV{SPRITE_PERSIST} // 0) && defined($focused) && !$focused;
 
 if ($persist) {
     close $fh;

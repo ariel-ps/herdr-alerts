@@ -65,7 +65,7 @@ def blowfish_key(blob80):
 def index(read, base=0):
     """Parse a MIX header. read(offset, length) -> bytes. -> (entries, body)."""
     flags = struct.unpack("<I", read(base, 4))[0]
-    if flags & 0xFFFF or flags == 0:
+    if flags & 0xFFFF:
         count = struct.unpack("<H", read(base, 2))[0]
         head, idx_at = base + 6, base + 6
     elif not flags & 0x00020000:

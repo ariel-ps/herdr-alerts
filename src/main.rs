@@ -25,7 +25,8 @@ Usage: herdr-alert COMMAND [OPTIONS]
 Commands:
   play [NAME]          Preview a sound with your flash and sprite settings
   list                  Browse sounds and download availability
-  download [PACK ...]   Download selected packs, or all sound packs
+  download [PACK ...]   Download sounds and available sprite artwork
+  download --sprites [PACK ...]  Download only sprite artwork
   set blocked|done NAME Choose an automatic alert sound
   set flash on|off     Save the flash setting for previews and automatic alerts
   set sprite on|off    Save the animation setting for previews and blocked alerts
@@ -153,13 +154,17 @@ impl Catalog {
         println!("\nPreview:  herdr-alert play NAME\nDownload: herdr-alert download PACK");
         Ok(())
     }
-    fn download(&self, root: &Path, requested: &[String]) -> Result<()> {
+    fn download(&self, root: &Path, requested: &[String], sprites_only: bool) -> Result<()> {
         let packs = self.data["games"]
             .as_object()
             .ok_or_else(|| failure("invalid pack catalog"))?;
         let available: Vec<_> = packs
             .iter()
-            .filter(|(name, spec)| valid_name(name) && spec["sounds"].is_string())
+            .filter(|(name, spec)| {
+                valid_name(name)
+                    && spec["sounds"].is_string()
+                    && (!sprites_only || spec["sprites"].is_string())
+            })
             .map(|(name, _)| name.clone())
             .collect();
         let games = if requested.is_empty() {
@@ -176,37 +181,61 @@ impl Catalog {
             }
         }
         let uv =
-            executable("uv").ok_or_else(|| failure("uv is required to download sound packs"))?;
+            executable("uv").ok_or_else(|| failure("uv is required to download alert packs"))?;
         let mut failed = false;
         for game in games {
             eprintln!("\nDownloading {game}...");
-            let mut command = Command::new(&uv);
-            command.args(["run", "--no-project"]);
-            if game == "redalert" {
-                command
-                    .args(["--with", "pycryptodome", "python"])
-                    .arg(root.join("libexec/fetch-redalert-sounds.py"));
-            } else {
-                let source = packs[game]["sounds"].as_str().unwrap();
-                let identifier = source
-                    .strip_prefix("archive:")
-                    .ok_or_else(|| failure(format!("unsupported source: {source}")))?;
-                command
-                    .arg("python")
-                    .arg(root.join("libexec/fetch-game-sounds.py"))
-                    .arg(identifier);
+            if !sprites_only {
+                let mut command = Command::new(&uv);
+                command.args(["run", "--no-project"]);
+                if game == "redalert" {
+                    command
+                        .args(["--with", "pycryptodome", "python"])
+                        .arg(root.join("libexec/fetch-redalert-sounds.py"));
+                } else {
+                    let source = packs[game]["sounds"].as_str().unwrap();
+                    let identifier = source
+                        .strip_prefix("archive:")
+                        .ok_or_else(|| failure(format!("unsupported source: {source}")))?;
+                    command
+                        .arg("python")
+                        .arg(root.join("libexec/fetch-game-sounds.py"))
+                        .arg(identifier);
+                }
+                if !command
+                    .arg(self.cache.join(game))
+                    .status()
+                    .map_err(failure)?
+                    .success()
+                {
+                    failed = true;
+                }
             }
-            if !command
-                .arg(self.cache.join(game))
-                .status()
-                .map_err(failure)?
-                .success()
-            {
-                failed = true;
+            if packs[game]["sprites"].is_string() {
+                let directory = self.cache.parent().unwrap().join("sprites");
+                let mut command = Command::new(&uv);
+                command.args(["run", "--no-project", "--with", "pillow"]);
+                if game == "redalert" {
+                    command
+                        .args(["--with", "pycryptodome", "python"])
+                        .arg(root.join("libexec/fetch-redalert-sprites.py"))
+                        .arg(directory.join(game));
+                } else {
+                    command
+                        .arg("python")
+                        .arg(root.join("libexec/fetch-sprites.py"))
+                        .arg(&directory)
+                        .arg(game);
+                }
+                if !command.status().map_err(failure)?.success() {
+                    failed = true;
+                }
             }
         }
         if failed {
-            Err(failure("one or more sound packs failed to download"))
+            Err(failure(
+                "one or more sound or sprite packs failed to download",
+            ))
         } else {
             Ok(())
         }
@@ -465,7 +494,14 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             &Catalog::load(&root)?,
             &settings::Config::load(&root)?,
         ),
-        "download" => Catalog::load(&root)?.download(&root, &args[1..]),
+        "download" => {
+            let sprites_only = args.get(1).is_some_and(|arg| arg == "--sprites");
+            Catalog::load(&root)?.download(
+                &root,
+                &args[if sprites_only { 2 } else { 1 }..],
+                sprites_only,
+            )
+        }
         "enable" | "disable" if args.len() == 1 => {
             settings::save(
                 &root,
