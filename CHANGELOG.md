@@ -6,6 +6,8 @@ All notable changes to Herdr Alerts are documented here.
 
 ### Fixed
 
+- Read Herdr's event `data` envelope so automatic sounds, flashes, and blocked
+  sprites actually run. Keep flat payloads working for manual callers.
 - Reuse the original `flash-term` background effect outside Herdr and the
   existing sprite renderer's Kitty protocol inside Herdr. Remove the unsupported
   graphics API and invisible visual-bell fallback; verify rendered pixels.

@@ -21,7 +21,7 @@
 # clip that is not in it, and the bundled pair plays with no sprite — an alert
 # that fires plainly beats one that does not fire.
 #
-# Env in: HERDR_PLUGIN_EVENT_JSON (pane_id, agent_status).
+# Env in: HERDR_PLUGIN_EVENT_JSON ({event, data: {pane_id, agent_status}}).
 #   HERDR_ALERT_OFF=1           silence entirely
 #   HERDR_ALERT_FLASH=0         no flash; sprites are controlled separately
 #   HERDR_ALERT_SPRITE=0        no sprite on blocked
@@ -97,8 +97,9 @@ esac
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-state=$(print -r -- "${HERDR_PLUGIN_EVENT_JSON:-}" | jq -r '.agent_status // .status // empty' 2>/dev/null)
-pane=$(print -r -- "${HERDR_PLUGIN_EVENT_JSON:-}" | jq -r '.pane_id // empty' 2>/dev/null)
+# Herdr wraps event fields in data; accept flat payloads for manual callers too.
+state=$(print -r -- "${HERDR_PLUGIN_EVENT_JSON:-}" | jq -r '(.data // .) | .agent_status // .status // empty' 2>/dev/null)
+pane=$(print -r -- "${HERDR_PLUGIN_EVENT_JSON:-}" | jq -r '(.data // .) | .pane_id // empty' 2>/dev/null)
 
 # Only the two transitions worth interrupting someone for. `working` and `idle`
 # fire constantly and would turn the alert into noise nobody reacts to.
