@@ -20,6 +20,7 @@ use strict;
 use warnings;
 use MIME::Base64 qw(encode_base64);
 use JSON::PP ();
+use Time::HiRes qw(clock_gettime CLOCK_MONOTONIC);
 
 my ($tty, $cols, $px) = @ARGV;
 die "usage: $0 <tty> <cols> [pixels]\n" unless $tty && $cols;
@@ -30,6 +31,7 @@ die "usage: $0 <tty> <cols> [pixels]\n" unless $tty && $cols;
 # doesn't report it, and asking the terminal directly (CSI 16 t) would send the
 # reply to whatever owns the pty — i.e. straight into Claude Code's input.
 my $PX      = $px || 40;
+my ($WIDTH, $HEIGHT) = ($PX, $PX);
 my $FRAMES  = 8;       # build-up sweep, like the sidebar clock wipe
 my $PULSES  = 3;       # then the ready flash
 my $DELAY   = 0.055;
@@ -71,21 +73,43 @@ sub frame {
     return $px;
 }
 
-# Transmit + place at the cursor. Same image id and placement id every frame, so
-# each one replaces the last instead of stacking placements up.
-sub send_frame {
-    my ($fh, $data, $id, $row, $col) = @_;
+# Upload all frames once as a tiled image. Playback changes only the crop of
+# one placement, so neither Kitty nor a multiplexer has to replace a live image.
+my $atlas_columns;
+sub upload_frames {
+    my ($fh, $frames, $id) = @_;
+    $atlas_columns = int(sqrt(@$frames * $HEIGHT / $WIDTH)) || 1;
+    $atlas_columns = @$frames if $atlas_columns > @$frames;
+    my $rows = int((@$frames + $atlas_columns - 1) / $atlas_columns);
+    my $atlas_width = $atlas_columns * $WIDTH;
+    my $atlas_height = $rows * $HEIGHT;
+    my $data = '';
+    for my $row (0 .. $rows - 1) {
+        for my $y (0 .. $HEIGHT - 1) {
+            for my $column (0 .. $atlas_columns - 1) {
+                my $frame = $frames->[$row * $atlas_columns + $column];
+                $data .= defined($frame) ? substr($frame, $y * $WIDTH * 4, $WIDTH * 4)
+                                        : "\0" x ($WIDTH * 4);
+            }
+        }
+    }
     my $b64 = encode_base64($data, '');
     my @chunks = $b64 =~ /(.{1,4000})/gs;
-    print $fh "\033[s\033[${row};${col}H";
     for my $i (0 .. $#chunks) {
         my $ctrl = $i == 0
-            ? "a=T,f=32,s=$PX,v=$PX,C=1,z=1,i=$id,p=1,q=2"
+            ? "a=t,f=32,s=$atlas_width,v=$atlas_height,i=$id,q=2"
             : "q=2";
         my $more = $i < $#chunks ? 1 : 0;
         print $fh "\033_G$ctrl,m=$more;$chunks[$i]\033\\";
     }
-    print $fh "\033[u";
+}
+
+sub show_frame {
+    my ($fh, $index, $id, $row, $col) = @_;
+    my $x = ($index % $atlas_columns) * $WIDTH;
+    my $y = int($index / $atlas_columns) * $HEIGHT;
+    print $fh "\033[s\033[${row};${col}H"
+        . "\033_Ga=p,i=$id,p=1,x=$x,y=$y,w=$WIDTH,h=$HEIGHT,C=1,z=1,q=2\033\\\033[u";
 }
 
 # Real Red Alert frames, when a pack is present. Packs are built by
@@ -106,39 +130,57 @@ sub load_pack {
         @packs = grep { -r $_ } @packs;
         last if @packs;
     }
+    @packs = ($ENV{SPRITE_FILE}) if $ENV{SPRITE_FILE};
     return unless @packs;
-    open my $in, '<:raw', $packs[int rand @packs] or return;
-    read($in, my $hdr, 8) == 8 or return;
-    my ($n, $w, $h) = unpack 'v3', $hdr;
-    return unless $n && $w && $w == $h;
-    my @f;
+    open my $in, '<:raw', $packs[int rand @packs] or return invalid_pack();
+    read($in, my $hdr, 8) == 8 or return invalid_pack();
+    # Version 0 is the original raw pack. Version 1 prefixes each frame with
+    # its u16 duration in milliseconds and plays without a gap between cycles.
+    my ($n, $w, $h, $version) = unpack 'v4', $hdr;
+    return invalid_pack() unless $n && $n <= 600 && $w && $h
+        && $w <= 512 && $h <= 512 && $version <= 1;
+    my $size = 8 + $n * ($w * $h * 4 + ($version ? 2 : 0));
+    return invalid_pack() unless $size <= 64 * 1024 * 1024 && -s $in == $size;
+    my (@f, @delays);
+    my $duration = 0;
     for (1 .. $n) {
-        read($in, my $buf, $w * $h * 4) == $w * $h * 4 or last;
+        my $ms = 55;
+        if ($version) {
+            read($in, my $timing, 2) == 2 or return invalid_pack();
+            $ms = unpack 'v', $timing;
+            return invalid_pack() unless $ms >= 10 && $ms <= 10000;
+        }
+        $duration += $ms;
+        read($in, my $buf, $w * $h * 4) == $w * $h * 4 or return invalid_pack();
         push @f, $buf;
+        push @delays, $ms / 1000;
     }
     close $in;
-    return unless @f;
+    return invalid_pack() if $version && $duration > 30000;
     # Packs are baked at whatever size they were built; scaling here rather
     # than rebuilding them means one knob covers every pack, present and future.
-    my $target = $ENV{SPRITE_PX} || 52;
-    if ($target != $w) {
-        @f = map { scale_frame($_, $w, $target) } @f;
-        $w = $target;
+    my $side = $w > $h ? $w : $h;
+    my $target = $ENV{SPRITE_PX} || ($version ? ($side > 192 ? 192 : $side) : 52);
+    return invalid_pack() unless $target =~ /^\d+$/ && $target >= 1 && $target <= 512;
+    my ($tw, $th) = (int($w * $target / $side) || 1, int($h * $target / $side) || 1);
+    return invalid_pack() if $n * $tw * $th * 4 > 64 * 1024 * 1024;
+    if ($tw != $w || $th != $h) {
+        @f = map { scale_frame($_, $w, $h, $tw, $th) } @f;
     }
-    @f = map { backdrop($_) } @f unless defined $ENV{SPRITE_BACKDROP}
-                                        && !$ENV{SPRITE_BACKDROP};
-    return ($w, \@f);
+    my $backdrop = $ENV{SPRITE_BACKDROP} // !$version;
+    @f = map { backdrop($_) } @f if $backdrop;
+    return ($tw, $th, \@f, \@delays, $version);
 }
 
-# Nearest-neighbour resize of one square RGBA frame. Nearest on purpose: these
+# Nearest-neighbour resize of one RGBA frame. Nearest on purpose: these
 # are pixel-art sprites, and interpolating turns them to mush.
 sub scale_frame {
-    my ($buf, $from, $to) = @_;
+    my ($buf, $w, $h, $tw, $th) = @_;
     my $out = '';
-    for my $y (0 .. $to - 1) {
-        my $sy = int($y * $from / $to);
-        for my $x (0 .. $to - 1) {
-            $out .= substr($buf, (($sy * $from) + int($x * $from / $to)) * 4, 4);
+    for my $y (0 .. $th - 1) {
+        my $sy = int($y * $h / $th);
+        for my $x (0 .. $tw - 1) {
+            $out .= substr($buf, (($sy * $w) + int($x * $w / $tw)) * 4, 4);
         }
     }
     return $out;
@@ -156,8 +198,22 @@ sub backdrop {
     return pack 'C*', @p;
 }
 
-my ($pack_px, $pack_frames) = load_pack();
-$PX = $pack_px if $pack_px;
+sub invalid_pack {
+    warn "herdr-alert: animation is missing or invalid; using fallback artwork. Reimport it with herdr-alert set animation FILE.gif.\n";
+    return;
+}
+
+my ($pack_w, $pack_h, $pack_frames, $pack_delays, $timed) = load_pack();
+($WIDTH, $HEIGHT) = ($pack_w, $pack_h) if $pack_frames;
+my $legacy_pack = $pack_frames && !$timed;
+unless ($pack_frames) {
+    $pack_frames = [map { frame($_ / $FRAMES, 0) } 1 .. $FRAMES];
+    $pack_delays = [($DELAY) x $FRAMES];
+    for (1 .. $PULSES) {
+        push @$pack_frames, frame(1, 1), frame(1, 0);
+        push @$pack_delays, ($DELAY * 1.6) x 2;
+    }
+}
 
 open my $fh, '>', $tty or die "open $tty: $!\n";
 select((select($fh), $| = 1)[0]);
@@ -165,37 +221,38 @@ select((select($fh), $| = 1)[0]);
 # Keep clear of the right edge, scaled to the sprite: a cell is roughly 7px
 # wide at any sane font size, so this stays a shade wider than the image and
 # tucks into the corner without being clipped.
-my $col = $cols - (int($PX / 7) + 1);
+my $col = $cols - (int($WIDTH / 7) + 1);
 $col = 1 if $col < 1;
 # Keyed on the window, not the pid, so a second alert replaces the sprite still
 # sitting in that pane instead of stacking a new image on top of it.
 my $id = 7000 + (($ENV{KITTY_WINDOW_ID} || $$) % 900);
+upload_frames($fh, $pack_frames, $id);
 
-# One pass of the animation. Returns roughly how long it took, so the persist
-# loop below can bound itself without a clock.
+# One complete animation pass; repeated passes can stop promptly on focus.
 sub play_once {
-    my ($out) = @_;
+    my ($out, $deadline) = @_;
     my $spent = 0;
-    if ($pack_frames) {
-        # Repeat short packs so two-frame sprites don't vanish in 110ms;
-        # cap long packs at the same roughly one-second animation interval.
-        my $n = 16;
-        for my $i (0 .. $n - 1) {
-            send_frame($out, $pack_frames->[$i % @$pack_frames], $id, 1, $col);
-            select(undef, undef, undef, $DELAY);
-            $spent += $DELAY;
+    # Legacy short sprites remain visible for about a second. Always play
+    # whole cycles, including long scenes; imported scenes own their timing.
+    my $n = scalar @$pack_frames;
+    $n *= int((16 + $n - 1) / $n) if $legacy_pack && $n < 16;
+    my $next_focus_check = 0;
+    for my $i (0 .. $n - 1) {
+        show_frame($out, $i % @$pack_frames, $id, 1, $col);
+        my $delay = $pack_delays->[$i % @$pack_frames];
+        my $until = clock_gettime(CLOCK_MONOTONIC) + $delay;
+        while (1) {
+            my $now = clock_gettime(CLOCK_MONOTONIC);
+            if (defined $deadline && $now >= $next_focus_check) {
+                my $focused = window_focused();
+                return if !defined($focused) || $focused || $now >= $deadline;
+                $next_focus_check = $now + 0.15;
+            }
+            my $remaining = $until - clock_gettime(CLOCK_MONOTONIC);
+            last if $remaining <= 0;
+            select(undef, undef, undef, defined($deadline) && $remaining > 0.05 ? 0.05 : $remaining);
         }
-    } else {
-        send_frame($out, frame($_ / $FRAMES, 0), $id, 1, $col),
-            select(undef, undef, undef, $DELAY), $spent += $DELAY
-            for 1 .. $FRAMES;
-        for (1 .. $PULSES) {
-            send_frame($out, frame(1, 1), $id, 1, $col);
-            select(undef, undef, undef, $DELAY * 1.6);
-            send_frame($out, frame(1, 0), $id, 1, $col);
-            select(undef, undef, undef, $DELAY * 1.6);
-            $spent += $DELAY * 3.2;
-        }
+        $spent += $delay;
     }
     return $spent;
 }
@@ -256,26 +313,24 @@ warn "herdr-alert: focus tracking is unavailable; sprite will play once.\n"
 if ($persist) {
     close $fh;
     exit 0 if fork();                       # parent returns, sprite keeps going
-    # Child: loop the animation until you arrive, then take it away. The focus
-    # check queries Herdr/Kitty, so it runs once per pass rather than per frame
-    # — a pass is about a second, which is soon enough to feel instant.
+    # Child: loop until focus returns. Long scenes check focus during playback
+    # so returning does not require waiting for the rest of the cycle.
     my $ttl = $ENV{SPRITE_TTL} || 1800;
-    my $gap = $ENV{SPRITE_LOOP_GAP} // 0.6;
-    my $waited = 0;
+    my $gap = $ENV{SPRITE_LOOP_GAP} // ($timed ? 0 : 0.6);
+    my $deadline = clock_gettime(CLOCK_MONOTONIC) + $ttl;
     open my $out, '>', $tty or exit 0;
     select((select($out), $| = 1)[0]);
-    while ($waited < $ttl) {
-        $waited += play_once($out);
+    while (clock_gettime(CLOCK_MONOTONIC) < $deadline) {
         my $focused = window_focused();
         last unless defined($focused); # stop if the pane was closed
         last if $focused;
+        last unless defined play_once($out, $deadline);
         select(undef, undef, undef, $gap);
-        $waited += $gap;
     }
     print $out "\033_Ga=d,d=I,i=$id,q=2\033\\";
     close $out;
     exit 0;
 }
 
-print $fh "\033_Ga=d,d=I,i=$id,q=2\033\\";   # delete image + placements
+print $fh "\033_Ga=d,d=I,i=$id,q=2\033\\";
 close $fh;

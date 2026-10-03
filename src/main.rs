@@ -30,6 +30,8 @@ Commands:
   set blocked|done NAME Choose an automatic alert sound
   set flash on|off     Save the flash setting for previews and automatic alerts
   set sprite on|off    Save the animation setting for previews and blocked alerts
+  set animation FILE  Import a GIF/animated PNG for previews and blocked alerts
+  set animation default  Restore the artwork paired with each sound
   enable / disable     Enable or mute automatic alerts
   status               Check settings and audio backend
 
@@ -325,6 +327,19 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
         if config.flash_enabled() { "on" } else { "off" }
     );
     let duration = config.get("HERDR_ALERT_MAX_SECONDS");
+    let animation = config.get("HERDR_ALERT_ANIMATION");
+    if !animation.is_empty() {
+        println!(
+            "  {:<18} {}{}",
+            "Animation",
+            animation,
+            if Path::new(animation).is_file() {
+                ""
+            } else {
+                " (missing; using fallback)"
+            }
+        );
+    }
     println!(
         "  {:<18} {} (previews and blocked-agent alerts)",
         "Sprite",
@@ -466,6 +481,7 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                         .arg(name.unwrap_or(""))
                         .arg(if flash { "1" } else { "0" })
                         .arg(if sprite { "1" } else { "0" })
+                        .env("SPRITE_FILE", config.get("HERDR_ALERT_ANIMATION"))
                         .spawn()
                         .map_err(failure)?,
                 )
@@ -522,6 +538,37 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                     "disabled. Manual previews still work."
                 }
             );
+            Ok(())
+        }
+        "set" if args.len() == 3 && args[1] == "animation" => {
+            let animation = if args[2] == "default" {
+                String::new()
+            } else {
+                let source = fs::canonicalize(&args[2]).map_err(failure)?;
+                let uv = executable("uv")
+                    .ok_or_else(|| failure("uv is required to import animations"))?;
+                let output = Command::new(uv)
+                    .args(["run", "--no-project", "--with", "pillow", "python"])
+                    .arg(root.join("libexec/import-animation.py"))
+                    .arg(source)
+                    .arg(xdg("XDG_DATA_HOME", ".local/share")?.join("herdr-alert/animations"))
+                    .stderr(process::Stdio::inherit())
+                    .output()
+                    .map_err(failure)?;
+                if !output.status.success() {
+                    return Err(failure("animation import failed; settings unchanged"));
+                }
+                let path = String::from_utf8(output.stdout)
+                    .map_err(failure)?
+                    .trim()
+                    .to_owned();
+                if path.is_empty() || !Path::new(&path).is_file() {
+                    return Err(failure("animation importer did not produce a file"));
+                }
+                path
+            };
+            settings::save(&root, &[("HERDR_ALERT_ANIMATION".into(), animation)])?;
+            println!("Animation updated. Preview: herdr-alert play\nSprites must be enabled: herdr-alert set sprite on");
             Ok(())
         }
         "set" if args.len() == 3 && ["flash", "sprite"].contains(&args[1].as_str()) => {

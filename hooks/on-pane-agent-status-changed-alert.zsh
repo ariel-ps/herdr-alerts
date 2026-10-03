@@ -123,7 +123,7 @@ fi
 
 # Flash first so the light and the sound land together rather than in sequence.
 if [[ -n "$pane" && "$pane" != *[^a-zA-Z0-9_:-]* ]]; then
-  SPRITE_NAME="${SPRITE_NAME:-}" zsh "$root/libexec/herdr-visuals" "$pane" "$state" "$name" \
+  SPRITE_FILE="${HERDR_ALERT_ANIMATION:-}" SPRITE_NAME="${SPRITE_NAME:-}" zsh "$root/libexec/herdr-visuals" "$pane" "$state" "$name" \
     "${HERDR_ALERT_FLASH:-1}" "${HERDR_ALERT_SPRITE:-1}" &!
 fi
 

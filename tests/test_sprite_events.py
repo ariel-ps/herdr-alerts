@@ -75,14 +75,14 @@ def check():
                     while time.monotonic() < deadline:
                         if select.select([master], [], [], .05)[0]:
                             output += os.read(master, 65536)
-                            ids = re.findall(rb'\x1b_Ga=T,[^;]*z=1,i=(\d+)', output)
+                            ids = re.findall(rb'\x1b_Ga=p,i=(\d+)', output)
                             if ids and b'\x1b_Ga=d,d=I,i=' + ids[0] + b',' in output:
                                 assert focused, 'Automatic sprite disappeared before pane focus'
                                 break
                             if len(ids) > 14 and not focused:
                                 set_focus(True)
                                 focused = True
-                    frames = re.findall(rb'\x1b_Ga=T,[^;]*z=1,[^;]*;([^\x1b]+)', output)
+                    frames = re.findall(rb'\x1b_Ga=p,([^\x1b]+)', output)
                     assert len(set(frames)) > 1, f'No animation: envelope={"data" in event}, flash={flash}'
                     assert focused, 'Unfocused sprite did not keep animating'
                     assert b'\x1b_Ga=d,d=I,i=' + ids[0] + b',' in output, 'Sprite not cleared'
@@ -106,7 +106,7 @@ def check():
                         if b'\x1b_Ga=d,d=I,i=' in output:
                             assert not waits_for_return or returned, f'{state} disappeared before focus returned'
                             break
-                        count = len(re.findall(rb'\x1b_Ga=T,', output))
+                        count = len(re.findall(rb'\x1b_Ga=p,', output))
                         if switch_away and count >= 2:
                             set_focus(False)
                             switch_away = False
@@ -117,7 +117,7 @@ def check():
                 assert preview.wait(timeout=3) == 0
                 assert b'\x1b_Ga=d,d=I,i=' in output, 'Focused sprite did not clear'
                 if not waits_for_return:
-                    assert len(re.findall(rb'\x1b_Ga=T,', output)) == 14
+                    assert len(re.findall(rb'\x1b_Ga=p,', output)) == 14
                 else:
                     assert returned
                 print(f'PASS: {state} clears while focused; initially focused={initially_focused}')
@@ -133,7 +133,7 @@ def check():
                     if b'\x1b_Ga=d,d=I,i=' in output:
                         break
             assert preview.wait(timeout=3) == 0
-            assert len(re.findall(rb'\x1b_Ga=T,', output)) == 14
+            assert len(re.findall(rb'\x1b_Ga=p,', output)) == 14
             assert b'\x1b_Ga=d,d=I,i=' in output, 'Preview did not clear'
             print('PASS: explicit one-shot animation clears')
             # Real Mario packs have only two frames; they must remain visible
@@ -146,7 +146,7 @@ def check():
                            env={**env, 'SPRITE_DIR': temporary, 'SPRITE_NAME': 'short',
                                 'SPRITE_PERSIST': '0'}, check=True, timeout=5)
             assert time.monotonic() - started >= .8
-            assert len(re.findall(rb'\x1b_Ga=T,', rendered.read_bytes())) == 16
+            assert len(re.findall(rb'\x1b_Ga=p,', rendered.read_bytes())) == 16
             assert b'\x1b_Ga=d,d=I,i=' in rendered.read_bytes()
             print('PASS: short sprite packs remain visible for a full animation interval')
         finally:

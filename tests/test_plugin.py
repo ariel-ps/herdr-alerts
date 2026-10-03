@@ -384,7 +384,7 @@ printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
             assert os.waitstatus_to_exitcode(status) == int(audio_exit), captured
             assert '\033' not in log.read_text(), log.read_text()
             assert 'Playing included tone' in log.read_text()
-            frames = re.findall(rb'\x1b_Ga=T,[^;]*z=1,i=(\d+)[^;]*;([^\x1b]+)', captured)
+            frames = re.findall(rb'\x1b_Ga=p,i=(\d+),([^\x1b]+)', captured)
             if sprite == 'on':
                 assert len({payload for _, payload in frames}) > 1, 'Preview did not animate'
                 assert b'\x1b_Ga=d,d=I,i=' + frames[0][0] + b',' in captured, 'Preview was not cleared'

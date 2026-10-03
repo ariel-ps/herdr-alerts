@@ -22,6 +22,7 @@ const KEYS: &[&str] = &[
     "HERDR_ALERT_OFF",
     "HERDR_ALERT_FLASH",
     "HERDR_ALERT_SPRITE",
+    "HERDR_ALERT_ANIMATION",
 ];
 
 fn target() -> Result<PathBuf> {

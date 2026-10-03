@@ -6,6 +6,8 @@ All notable changes to Herdr Alerts are documented here.
 
 ### Fixed
 
+- Prevent animation flicker by uploading frames once and changing the displayed
+  crop, instead of replacing the visible image on every frame.
 - Download sprite artwork alongside sounds so fresh installations can show game
   sprites. `download --sprites` repairs installations that already have audio.
 - Clear sprites after one animation in focused panes. Unfocused panes keep them
@@ -23,6 +25,9 @@ All notable changes to Herdr Alerts are documented here.
 
 ### Added
 
+- `herdr-alert set animation FILE` imports GIF/animated PNG scenes with complete
+  cycles, per-frame timing, rectangular artwork, and seamless looping. Use
+  `set animation default` to restore the sound's paired artwork.
 - `herdr-alert` is the main CLI; `herdr-sound` and `alert8play` remain compatible.
 - Manual previews show sprites using the saved sprite setting and the same
   renderer and focus behavior as automatic alerts.

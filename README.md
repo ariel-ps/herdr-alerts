@@ -26,7 +26,7 @@ Open a new terminal, then run `herdr-alert play`. You should hear a short tone, 
 <details>
 <summary>Install only this plugin into an existing Herdr installation</summary>
 
-Requires Herdr 0.9.3+, Git, a stable Rust toolchain (Cargo and rustc), Python 3, zsh, and jq. Installation compiles the Rust CLI. Audio uses `afplay` on macOS or `ffplay` (FFmpeg) on Linux. Pane graphics use Perl with `MIME::Base64` and `JSON::PP`; optional sound-pack downloads use the existing Python fetchers through uv.
+Requires Herdr 0.9.3+, Git, a stable Rust toolchain (Cargo and rustc), Python 3, zsh, and jq. Installation compiles the Rust CLI. Audio uses `afplay` on macOS or `ffplay` (FFmpeg) on Linux. Pane graphics use Perl with `MIME::Base64`, `JSON::PP`, and `Time::HiRes` (Fedora package `perl-Time-HiRes`); optional sound-pack downloads use the existing Python fetchers through uv.
 
 ```sh
 herdr plugin install ariel-ps/herdr-alerts --ref main --yes
@@ -62,7 +62,7 @@ herdr-alert play 1up
 ```
 
 The yellow circular animation is the built-in fallback, not downloaded game artwork.
-Sprites play for about a second and disappear when the affected pane is focused. If it is
+Sprites play a complete cycle (at least about a second for legacy packs) and disappear when the affected pane is focused. If it is
 unfocused, they keep animating until you return. This applies to automatic alerts,
 `play`, and menu previews. Focus tracking uses Herdr's pane state, with Kitty window
 focus when available; a 30-minute limit prevents abandoned animations. Without
@@ -73,6 +73,29 @@ Flashing is on by default. Run `herdr-alert set flash off` to disable flashing, 
 Outside Herdr, this uses the original `flash-term` background-color effect (OSC 11). It restores Kitty's current background when remote control is available, or resets to the terminal's configured background otherwise. Inside Herdr, it draws and removes a temporary Kitty graphics overlay without changing pane colors; enable `experimental.kitty_graphics = true` in Herdr's configuration. Explicit previews work even when automatic alerts are muted. For background jobs without a terminal, turn both flash and sprite off.
 
 Sprites are on by default for previews and blocked-agent alerts. Use `herdr-alert set sprite off` or `herdr-alert set sprite on` to save your preference. Sprites work independently of flashing; turn both off for sound only. Cached sprite packs supply game artwork; otherwise a built-in animated indicator appears. Sprite rendering requires Kitty graphics support, either through Herdr or a compatible terminal.
+
+## Use your own animation
+
+Import a GIF or animated PNG containing the complete scene, such as a character
+jumping over an obstacle:
+
+```sh
+herdr-alert set animation ./jump-scene.gif
+herdr-alert set sprite on
+herdr-alert play
+herdr-alert set animation default  # Return to each sound's paired artwork
+```
+
+Import requires `uv` and uses Pillow, the same image library used by sprite
+downloads. The scene is copied into the user data directory and converted once;
+the original file is no longer needed. Import preserves frame timing, transparency,
+and aspect ratio. Scenes may contain up to 600 frames, measure up to 512×512 pixels,
+last up to 30 seconds per cycle, and occupy up to 64 MiB when decoded.
+
+A focused pane plays the whole scene once. An unfocused pane loops it without a
+pause between cycles and clears it when you return. Sound plays once per alert.
+Custom scenes apply to previews and needs-attention alerts; finished alerts keep
+their existing sound and flash behavior. Sprite on/off still controls visibility.
 
 ## Commands
 
@@ -86,6 +109,8 @@ Sprites are on by default for previews and blocked-agent alerts. Use `herdr-aler
 | `herdr-alert set done NAME` | Choose the finished sound |
 | `herdr-alert set flash on\|off` | Save the flash preference for previews and automatic alerts |
 | `herdr-alert set sprite on\|off` | Save the sprite preference for previews and blocked-agent alerts |
+| `herdr-alert set animation FILE` | Import a GIF or animated PNG for previews and needs-attention alerts |
+| `herdr-alert set animation default` | Restore the artwork paired with each sound |
 | `herdr-alert enable` | Enable automatic alerts |
 | `herdr-alert disable` | Mute automatic alerts; manual previews still work |
 | `herdr-alert status` | Show settings, sound availability, and audio backend |
@@ -134,9 +159,15 @@ cargo clippy --locked --all-targets -- -D warnings
 python3 tests/test_plugin.py
 python3 tests/test_sprite_events.py
 uv run --with pillow --with pycryptodome python tests/test_sprite_downloads.py
+uv run --with pillow python tests/test_animation.py
 ```
 
 The integration check compiles the Rust executable, then tests Bash/Zsh commands, settings, downloads, compatibility aliases, and playback errors with stubs. It does not play audio or download sound packs. Build locally with `sh scripts/build/install.sh`. Cargo dependencies are pinned in `Cargo.lock`.
+
+`tests/test_sprite_flicker.py --herdr` records actual animation pixels in an isolated
+X11 desktop with Kitty, Herdr, and FFmpeg. It checks for blank frames during slow
+image delivery, verifies movement, and confirms cleanup. Run without `--herdr`
+to check Kitty directly.
 
 `tests/test_flash_visual.py` checks actual rendered pixels in an X11 desktop with Herdr and Kitty. Run it with an explicit test pane and crop, as shown in the script's help, to verify the flash appears and the background is restored.
 
