@@ -1,0 +1,51 @@
+#!/usr/bin/env zsh
+# Shared visual effects for manual previews and automatic pane alerts.
+emulate -L zsh
+setopt pipefail extendedglob
+root="${HERDR_PLUGIN_ROOT:-${0:A:h:h}}"
+pane=${1:-}
+state=${2:-preview}
+name=${3:-}
+flash=${4:-1}
+sprite=${5:-1}
+if [[ $# -gt 5 || "$pane" == *[^a-zA-Z0-9_:-]* || ( "$state" != preview && "$state" != blocked && "$state" != done ) ]]; then
+  print -u2 -- 'herdr-alert: visuals require a valid pane ID and preview, blocked, or done state.'
+  exit 2
+fi
+
+result=0
+if [[ "$flash" == 1 ]]; then
+  flash_state=$state
+  [[ "$state" == preview ]] && flash_state=done
+  zsh "$root/libexec/herdr-flash" "$pane" "$flash_state" || result=$?
+fi
+[[ "$sprite" == 1 && "$state" != done ]] || exit "$result"
+
+terminal=/dev/tty
+if [[ -n "$pane" ]]; then
+  shell_pid=$("${HERDR_BIN_PATH:-herdr}" pane process-info --pane "$pane" | jq -er '.result.process_info.shell_pid | select(type == "number")') || exit 1
+  [[ "$shell_pid" == <1-> ]] || exit 1
+  tty=$(ps -o tty= -p "$shell_pid" | tr -d ' ') || exit 1
+  if [[ ( "$tty" != tty[a-zA-Z0-9]## && "$tty" != pts/<-> ) || ! -c "/dev/$tty" ]]; then
+    print -u2 -- 'herdr-alert: no terminal found for the Herdr pane.'
+    exit 1
+  fi
+  terminal="/dev/$tty"
+fi
+cols=$(stty size < "$terminal" 2>/dev/null | awk '{print $2}')
+if [[ "$cols" != <1-> ]]; then
+  print -u2 -- 'herdr-alert: sprites need an interactive terminal; use set sprite off for audio-only jobs.'
+  exit 1
+fi
+
+export SPRITE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit/sprites"
+[[ -r "$root/generated/alerts.zsh" ]] && source "$root/generated/alerts.zsh"
+if typeset -f __herdr_alert_spec >/dev/null && __herdr_alert_spec "$name"; then
+  export SPRITE_GAME="$alert_game"
+  [[ -z "${SPRITE_NAME:-}" && -n "$alert_sprite" && -r "$SPRITE_DIR/$alert_game/$alert_sprite.rgba" ]] \
+    && export SPRITE_NAME="$alert_sprite"
+fi
+# A preview completes after one animation even when its terminal is unfocused.
+[[ "$state" == preview ]] && export SPRITE_PERSIST=0
+perl "$root/vendor/sprite/sprite.pl" "$terminal" "$cols" || exit $?
+exit "$result"

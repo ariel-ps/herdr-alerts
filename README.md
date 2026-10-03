@@ -2,13 +2,13 @@
 
 **Hear when an agent finishes or needs your attention. See which pane needs you.**
 
-Herdr Alerts plays a sound and flashes the affected pane when an agent finishes or becomes blocked. Its Rust CLI previews sounds and manages settings. An included tone works immediately; optional game packs let you choose your own alert sounds.
+Herdr Alerts plays a sound and flashes the affected pane when an agent finishes or becomes blocked. Its Rust CLI, `herdr-alert`, previews sounds, flashes, and animated sprites. An included tone works immediately; optional game packs let you choose your own alert sounds.
 
 ```sh
-herdr-sound play                 # Play a tone and flash your terminal
-herdr-sound set flash off        # Disable flashing
-herdr-sound download mario       # Get a sound pack
-herdr-sound set done 1up         # Use it when an agent finishes
+herdr-alert play                 # Preview sound, flash, and sprite
+herdr-alert set flash off        # Disable flashing
+herdr-alert download mario       # Get a sound pack
+herdr-alert set done 1up         # Use it when an agent finishes
 ```
 
 ## Install
@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/ariel-ps/herdr-setup/main/install.s
 
 You need internet access, `curl`, and `tar`. macOS also needs Homebrew and its command-line build tools; Linux needs `apt-get` or `dnf`, with sudo or root access. Herdr does not need to be installed already.
 
-Open a new terminal, then run `herdr-sound play`. You should hear a short tone and see four green flashes; no sound-pack download is required.
+Open a new terminal, then run `herdr-alert play`. You should hear a short tone, see four green flashes, then an animated sprite in the top-right corner. No sound-pack download is required.
 
 <details>
 <summary>Install only this plugin into an existing Herdr installation</summary>
@@ -35,46 +35,46 @@ herdr plugin action invoke play --plugin dev.ariel.herdr-alerts
 
 The second command previews the included tone. In Herdr, you can also choose **Preview alert sound** from the plugin actions. Use a commit or release tag instead of `main` to pin a version.
 
-To use `herdr-sound` in your shell, source the installed plugin's `shell.bash` from `.bashrc`, or `shell.zsh` from `.zshrc`. These add its `bin` directory to `PATH`. Bash remains your shell. The Rust CLI uses zsh to read existing shell configuration, and the automatic pane hook remains a zsh script. Herdr Setup configures shell integration automatically.
+To use `herdr-alert` in your shell, source the installed plugin's `shell.bash` from `.bashrc`, or `shell.zsh` from `.zshrc`. These add its `bin` directory to `PATH`. Bash remains your shell. The Rust CLI uses zsh to read existing shell configuration, and the automatic pane hook remains a zsh script. Herdr Setup configures shell integration automatically.
 
 </details>
 
 ## Choose your sounds
 
 ```sh
-herdr-sound list                  # Browse names, packs, and availability
-herdr-sound download mario
-herdr-sound play 1up              # Preview before choosing
-herdr-sound set done 1up
+herdr-alert list                  # Browse names, packs, and availability
+herdr-alert download mario
+herdr-alert play 1up              # Preview before choosing
+herdr-alert set done 1up
 
-herdr-sound download redalert
-herdr-sound set blocked tesla
+herdr-alert download redalert
+herdr-alert set blocked tesla
 ```
 
-Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Automatic alerts also flash the pane and can show sprites when the corresponding assets are available.
+Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Automatic alerts also flash the pane and show sprites when an agent needs attention.
 
-Flashing is on by default. Run `herdr-sound set flash off` to disable flashing, or `herdr-sound set flash on` to enable it. This preference is saved for manual previews (`herdr-sound play` and `alert8play`) and automatic alerts. Herdr does not need to be running for terminal previews.
+Flashing is on by default. Run `herdr-alert set flash off` to disable flashing, or `herdr-alert set flash on` to enable it. This preference is saved for manual previews (`herdr-alert play` and `alert8play`) and automatic alerts. Herdr does not need to be running for terminal previews.
 
-Outside Herdr, this uses the original `flash-term` background-color effect (OSC 11). It restores Kitty's current background when remote control is available, or resets to the terminal's configured background otherwise. Inside Herdr, it draws and removes a temporary Kitty graphics overlay without changing pane colors; enable `experimental.kitty_graphics = true` in Herdr's configuration. Explicit previews work even when automatic alerts are muted and do not show sprites. For background jobs without a terminal, turn flashing off.
+Outside Herdr, this uses the original `flash-term` background-color effect (OSC 11). It restores Kitty's current background when remote control is available, or resets to the terminal's configured background otherwise. Inside Herdr, it draws and removes a temporary Kitty graphics overlay without changing pane colors; enable `experimental.kitty_graphics = true` in Herdr's configuration. Explicit previews work even when automatic alerts are muted. For background jobs without a terminal, turn both flash and sprite off.
 
-Sprites are also on by default for blocked-agent alerts. Use `herdr-sound set sprite off` or `herdr-sound set sprite on` to save your preference. Sprites work independently of flashing; turn both off for sound only. Manual previews do not show sprites.
+Sprites are on by default for previews and blocked-agent alerts. Use `herdr-alert set sprite off` or `herdr-alert set sprite on` to save your preference. Sprites work independently of flashing; turn both off for sound only. Previews animate once, then clear the image. Cached sprite packs supply game artwork; otherwise a built-in animated indicator appears. Sprite rendering requires Kitty graphics support, either through Herdr or a compatible terminal.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `herdr-sound play [NAME]` | Preview a sound using your saved flash setting |
-| `herdr-sound list` | Browse sounds and see which are ready |
-| `herdr-sound download [PACK ...]` | Download selected packs; omit PACK to download all sound packs |
-| `herdr-sound set blocked NAME` | Choose the needs-attention sound |
-| `herdr-sound set done NAME` | Choose the finished sound |
-| `herdr-sound set flash on\|off` | Save the flash preference for previews and automatic alerts |
-| `herdr-sound set sprite on\|off` | Save the sprite preference for blocked-agent alerts |
-| `herdr-sound enable` | Enable automatic alerts |
-| `herdr-sound disable` | Mute automatic alerts; manual previews still work |
-| `herdr-sound status` | Show settings, sound availability, and audio backend |
+| `herdr-alert play [NAME]` | Preview sound, flash, and sprite using your saved settings |
+| `herdr-alert list` | Browse sounds and see which are ready |
+| `herdr-alert download [PACK ...]` | Download selected packs; omit PACK to download all sound packs |
+| `herdr-alert set blocked NAME` | Choose the needs-attention sound |
+| `herdr-alert set done NAME` | Choose the finished sound |
+| `herdr-alert set flash on\|off` | Save the flash preference for previews and automatic alerts |
+| `herdr-alert set sprite on\|off` | Save the sprite preference for previews and blocked-agent alerts |
+| `herdr-alert enable` | Enable automatic alerts |
+| `herdr-alert disable` | Mute automatic alerts; manual previews still work |
+| `herdr-alert status` | Show settings, sound availability, and audio backend |
 
-Run `herdr-sound COMMAND --help` for details. The aliases `sync`, `on`, and `off`, and the older `alert8play` and `herdr-sounds-sync` commands still work. `alert8play [NAME]` uses the same sound and flash settings.
+Run `herdr-alert COMMAND --help` for details. The aliases `sync`, `on`, and `off`, and the older `herdr-sound`, `alert8play`, and `herdr-sounds-sync` commands still work. `herdr-sound play [NAME]` and `alert8play [NAME]` use the same sound, flash, and sprite settings.
 
 ## Settings
 
@@ -98,9 +98,9 @@ Previews use the done-volume and duration settings. The CLI saves sound choices,
 
 ## No sound?
 
-Run `herdr-sound status`, then `herdr-sound play`. Status checks settings and the audio player; the preview tests playback. Read any reported error, and check whether another application can play audio. Linux requires a working audio session and output device.
+Run `herdr-alert status`, then `herdr-alert play`. Status checks settings and the audio player; the preview tests playback. Read any reported error, and check whether another application can play audio. Linux requires a working audio session and output device.
 
-If a named sound is missing, run `herdr-sound download PACK` using the pack shown by `list`. Downloads are cached under `${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit` and reused across upgrades.
+If a named sound is missing, run `herdr-alert download PACK` using the pack shown by `list`. Downloads are cached under `${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit` and reused across upgrades.
 
 ## Development
 

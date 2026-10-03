@@ -16,6 +16,9 @@ All notable changes to Herdr Alerts are documented here.
 
 ### Added
 
+- `herdr-alert` is the main CLI; `herdr-sound` and `alert8play` remain compatible.
+- Manual previews show sprites using the saved sprite setting and the same
+  renderer as automatic alerts. Previews animate once, then clear the image.
 - `herdr-sound set sprite on|off` saves the blocked-alert animation preference,
   independently of flashing. Status shows both settings.
 

@@ -10,6 +10,7 @@ import tomllib
 import base64
 import errno
 import pty
+import re
 import select
 import signal
 import time
@@ -26,7 +27,7 @@ def check():
         required = [
             'CHANGELOG.md', 'SECURITY.md',
             'hooks/on-pane-agent-status-changed-alert.zsh',
-            'bin/alert8play', 'bin/herdr-sound',
+            'bin/alert8play', 'bin/herdr-sound', 'bin/herdr-alert',
             'libexec/herdr-play-sound', 'libexec/fetch-game-sounds.py',
             'libexec/fetch-redalert-sounds.py',
             'scripts/build/gen-alert-tables.py',
@@ -56,9 +57,9 @@ def check():
         }]
         assert manifest['actions'] == [
             {'id': 'alerts', 'title': 'List the named alerts',
-             'command': ['./bin/herdr-sound', 'list']},
-            {'id': 'play', 'title': 'Preview alert sound',
-             'command': ['./bin/herdr-sound', 'play'],
+             'command': ['./bin/herdr-alert', 'list']},
+            {'id': 'play', 'title': 'Preview sound, flash and sprite',
+             'command': ['./bin/herdr-alert', 'play'],
              'contexts': ['pane', 'workspace']},
         ]
 
@@ -112,7 +113,7 @@ exit "${PLAYBACK_EXIT:-0}"
             stub.chmod(0o755)
         config = home / 'config/herdr/plugins/config/dev.ariel.herdr-alerts'
         config.mkdir(parents=True)
-        initial_config = '# Keep this comment\nCUSTOM_SETTING=preserved\nHERDR_VOLUME_DONE=0.4\nHERDR_ALERT_MAX_SECONDS=0.5\nHERDR_ALERT_OFF=1\nHERDR_ALERT_FLASH=0\n'
+        initial_config = '# Keep this comment\nCUSTOM_SETTING=preserved\nHERDR_VOLUME_DONE=0.4\nHERDR_ALERT_MAX_SECONDS=0.5\nHERDR_ALERT_OFF=1\nHERDR_ALERT_FLASH=0\nHERDR_ALERT_SPRITE=0\n'
         (config / 'config.sh').write_text(initial_config)
         env = {**os.environ, 'HOME': str(home), 'XDG_CONFIG_HOME': str(home / 'config'),
                'XDG_CACHE_HOME': str(home / 'cache'), 'PLAYBACK_LOG': str(recorded),
@@ -151,7 +152,7 @@ exit "${PLAYBACK_EXIT:-0}"
             assert result.returncode == 0, result.stderr
             rows = {line.split()[0]: line.split()[2] for line in result.stdout.split('\n\n')[0].splitlines()[1:]}
             assert rows['1up'] == 'ready' and rows['tesla'] == 'missing', rows
-            assert 'herdr-sound download PACK' in result.stdout
+            assert 'herdr-alert download PACK' in result.stdout
             for command in ['', 'play', 'list', 'download', 'set', 'enable', 'disable', 'status']:
                 result = invoke(*([command] if command else []), '--help', command='herdr-sound')
                 assert result.returncode == 0 and 'usage:' in result.stdout.lower(), result.stderr
@@ -268,7 +269,7 @@ def check_flashes():
         home = Path(temporary)
         config = home / 'herdr'
         config.mkdir()
-        (config / 'config.sh').write_text('HERDR_ALERT_OFF=1\nHERDR_ALERT_FLASH=0\n')
+        (config / 'config.sh').write_text('HERDR_ALERT_OFF=1\nHERDR_ALERT_FLASH=0\nHERDR_ALERT_SPRITE=0\n')
         audio = home / 'afplay'
         audio.write_text('#!/bin/sh\nexit "${PLAYBACK_EXIT:-0}"\n')
         audio.chmod(0o755)
@@ -310,14 +311,19 @@ printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
         env.pop('KITTY_WINDOW_ID', None)
         binary = str(ROOT / 'bin/herdr-sound')
         config = home / 'herdr/plugins/config/dev.ariel.herdr-alerts/config.sh'
-        for shell, command, term, audio_exit, pane, preference in [
-            ('bash', 'alert8play', 'xterm-256color', '0', '', 'on'),
-            ('zsh', 'herdr-sound', 'xterm-256color', '7', '', 'on'),
-            ('bash', 'alert8play', 'dumb', '0', '', 'on'),
-            ('bash', 'alert8play', 'xterm-256color', '0', 'wN:p3', 'on'),
-            ('bash', 'alert8play', 'xterm-256color', '0', 'wN:p3', 'off'),
-            ('zsh', 'herdr-sound', 'xterm-256color', '0', '', 'off'),
+        for shell, command, term, audio_exit, pane, preference, sprite in [
+            ('bash', 'alert8play', 'xterm-256color', '0', '', 'on', 'off'),
+            ('zsh', 'herdr-sound', 'xterm-256color', '7', '', 'on', 'off'),
+            ('bash', 'alert8play', 'dumb', '0', '', 'on', 'off'),
+            ('bash', 'alert8play', 'xterm-256color', '0', 'wN:p3', 'on', 'off'),
+            ('bash', 'alert8play', 'xterm-256color', '0', 'wN:p3', 'off', 'off'),
+            ('zsh', 'herdr-sound', 'xterm-256color', '0', '', 'off', 'off'),
+            ('bash', 'herdr-alert', 'xterm-kitty', '0', '', 'off', 'on'),
+            ('zsh', 'herdr-alert', 'xterm-kitty', '0', 'wN:p3', 'on', 'on'),
+            ('bash', 'herdr-sound', 'xterm-kitty', '0', 'wN:p3', 'off', 'on'),
+            ('zsh', 'alert8play', 'xterm-kitty', '0', '', 'on', 'on'),
         ]:
+            subprocess.run([binary, 'set', 'sprite', sprite], env=env, check=True, capture_output=True)
             result = subprocess.run([binary, 'set', 'flash', preference], env=env,
                                     text=True, capture_output=True)
             assert result.returncode == 0, result.stderr
@@ -334,7 +340,7 @@ printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
                 with log.open('w') as output:
                     os.dup2(output.fileno(), 1)
                 args = [str(ROOT / 'bin' / command)]
-                if command == 'herdr-sound':
+                if command != 'alert8play':
                     args.append('play')
                 os.execvpe(shell, [shell, '-fc', '"$@"', 'check', *args],
                            {**env, 'TERM': term, 'PLAYBACK_EXIT': audio_exit,
@@ -365,14 +371,19 @@ printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
             assert os.waitstatus_to_exitcode(status) == int(audio_exit), captured
             assert '\033' not in log.read_text(), log.read_text()
             assert 'Playing included tone' in log.read_text()
-            if preference == 'off':
+            frames = re.findall(rb'\x1b_Ga=T,[^;]*z=1,i=(\d+)[^;]*;([^\x1b]+)', captured)
+            if sprite == 'on':
+                assert len({payload for _, payload in frames}) > 1, 'Preview did not animate'
+                assert b'\x1b_Ga=d,d=I,i=' + frames[0][0] + b',' in captured, 'Preview was not cleared'
+            else:
+                assert not frames, 'Sprite ignored saved off setting'
+            if preference == 'off' and sprite == 'off':
                 assert b'\x1b' not in captured, captured
-            elif pane:
-                assert captured.count(b'\x1b_Ga=T') == 4, captured
-                assert captured.count(b'\x1b_Ga=d,d=I') == 5, captured
+            elif preference == 'on' and pane:
+                assert len(re.findall(rb'\x1b_Ga=T,[^;]*z=9,', captured)) == 4, captured
                 encoded_green = base64.b64encode(bytes([0, 204, 68, 255]) * 64)
                 assert captured.count(b';' + encoded_green + b'\x1b\\') == 4, captured
-            else:
+            elif preference == 'on':
                 assert captured.count(b'\x1b]11;#00cc44\x1b\\') == 4, captured
                 assert captured.count(b'\x1b]111\x1b\\') == 5, captured
         result = subprocess.run([str(ROOT / 'bin/alert8play'), '--flash'],
@@ -413,6 +424,7 @@ def check_sprite_settings():
             path = plugin / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
+        shutil.copy2(ROOT / 'libexec/herdr-visuals', plugin / 'libexec/herdr-visuals')
         master, slave = pty.openpty()
         try:
             env = {**os.environ, 'HERDR_PLUGIN_CONFIG_DIR': str(config),
@@ -425,7 +437,7 @@ def check_sprite_settings():
                 assert result.returncode == 0, result.stderr
                 return result.stdout
             # Missing sprite settings retain the existing default-on behavior.
-            assert 'on (blocked-agent alerts)' in cli('status')
+            assert 'on (previews and blocked-agent alerts)' in cli('status')
             for flash, sprite, state, muted, failure in [
                 ('off', 'on', 'blocked', False, '0'),
                 ('on', 'off', 'blocked', False, '0'),
@@ -441,7 +453,7 @@ def check_sprite_settings():
                 saved = (config / 'config.sh').read_bytes()
                 assert saved.startswith(b'# Keep custom settings\n')
                 assert f"HERDR_ALERT_SPRITE='{int(sprite == 'on')}'".encode() in saved
-                assert f'{sprite} (blocked-agent alerts)' in cli('status')
+                assert f'{sprite} (previews and blocked-agent alerts)' in cli('status')
                 result = subprocess.run([binary, 'set', 'sprite', 'invalid'], env=env, capture_output=True)
                 assert result.returncode == 2 and (config / 'config.sh').read_bytes() == saved
                 log.write_text('')

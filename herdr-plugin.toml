@@ -18,10 +18,10 @@ command = ["zsh", "./hooks/on-pane-agent-status-changed-alert.zsh"]
 [[actions]]
 id = "alerts"
 title = "List the named alerts"
-command = ["./bin/herdr-sound", "list"]
+command = ["./bin/herdr-alert", "list"]
 
 [[actions]]
 id = "play"
-title = "Preview alert sound"
-command = ["./bin/herdr-sound", "play"]
+title = "Preview sound, flash and sprite"
+command = ["./bin/herdr-alert", "play"]
 contexts = ["pane", "workspace"]

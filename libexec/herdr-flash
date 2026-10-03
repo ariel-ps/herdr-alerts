@@ -7,7 +7,7 @@ setopt pipefail extendedglob
 pane=${1:-}
 state=${2:-done}
 if [[ $# -gt 2 || "$pane" == *[^a-zA-Z0-9_:-]* || ( "$state" != done && "$state" != blocked ) ]]; then
-  print -u2 -- 'herdr-sound: flash requires a valid pane ID and done or blocked state.'
+  print -u2 -- 'herdr-alert: flash requires a valid pane ID and done or blocked state.'
   exit 2
 fi
 
@@ -17,13 +17,13 @@ if [[ -n "$pane" ]]; then
   [[ "$shell_pid" == <1-> ]] || exit 1
   terminal=$(ps -o tty= -p "$shell_pid" | tr -d ' ') || exit 1
   if [[ ( "$terminal" != tty[a-zA-Z0-9]## && "$terminal" != pts/<-> ) || ! -c "/dev/$terminal" ]]; then
-    print -u2 -- 'herdr-sound: no terminal found for the Herdr pane.'
+    print -u2 -- 'herdr-alert: no terminal found for the Herdr pane.'
     exit 1
   fi
   terminal="/dev/$terminal"
 fi
 if ! { exec 3>"$terminal"; } 2>/dev/null; then
-  print -u2 -- 'herdr-sound: --flash needs an interactive terminal; omit it for audio-only jobs.'
+  print -u2 -- 'herdr-alert: --flash needs an interactive terminal; omit it for audio-only jobs.'
   exit 1
 fi
 
@@ -34,7 +34,7 @@ if [[ -n "$pane" ]]; then
   # supported Kitty image path draws above even a full-screen agent instead.
   read -r rows cols <<<"$(stty size < "$terminal")"
   if [[ "$rows" != <1-> || "$cols" != <1-> ]]; then
-    print -u2 -- 'herdr-sound: cannot determine the pane dimensions.'
+    print -u2 -- 'herdr-alert: cannot determine the pane dimensions.'
     exit 1
   fi
   rgba=(0 204 68 255)

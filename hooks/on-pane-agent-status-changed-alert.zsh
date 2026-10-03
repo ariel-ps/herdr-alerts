@@ -123,42 +123,8 @@ fi
 
 # Flash first so the light and the sound land together rather than in sequence.
 if [[ -n "$pane" && "$pane" != *[^a-zA-Z0-9_:-]* ]]; then
-  (
-    if [[ "${HERDR_ALERT_FLASH:-1}" == 1 ]]; then
-      zsh "$root/libexec/herdr-flash" "$pane" "$state"
-    fi
-
-    # Sprite after the wash rather than under it: both are layers now, and the
-    # sprite is the one worth looking at. Only for blocked — it runs about a
-    # second and is the "come and deal with this" signal.
-    if [[ "$state" == blocked && "${HERDR_ALERT_SPRITE:-1}" == 1 ]]; then
-      shell_pid=$(herdr pane process-info --pane "$pane" 2>/dev/null \
-        | jq -r '.result.process_info.shell_pid // empty')
-      if [[ "$shell_pid" == <1-> ]]; then
-        tty=$(ps -o tty= -p "$shell_pid" 2>/dev/null | tr -d ' ')
-        [[ ( "$tty" == tty[a-zA-Z0-9]## || "$tty" == pts/<-> ) && -c "/dev/$tty" ]] || exit 1
-        sprite="$root/vendor/sprite/sprite.pl"
-        cols=$(stty size < "/dev/$tty" 2>/dev/null | awk '{print $2}')
-        if [[ -n "$tty" && -w "/dev/$tty" && -r "$sprite" && -n "$cols" ]]; then
-          # sprite.pl defaults SPRITE_DIR to the dotfiles cache it was vendored
-          # from, so the kit has to name its own tree or it draws someone else's
-          # packs — and on any other machine, none. Exported inside this
-          # subshell, which is the whole reason the flash runs in one.
-          export SPRITE_DIR="$cache/sprites"
-          [[ -n "$sprite_game" ]] && export SPRITE_GAME="$sprite_game"
-          # Match the frame to the clip that just played, but only when that
-          # pack is actually built: a name nothing has sends sprite.pl hunting
-          # for that one file across every game and then falling to its
-          # procedural disc, where dropping the name gets a real frame from the
-          # right game instead.
-          [[ -z "${SPRITE_NAME:-}" && -n "$sprite_name" \
-             && -r "$SPRITE_DIR/$sprite_game/$sprite_name.rgba" ]] \
-            && export SPRITE_NAME="$sprite_name"
-          perl "$sprite" "/dev/$tty" "$cols" >/dev/null 2>&1
-        fi
-      fi
-    fi
-  ) &!
+  SPRITE_NAME="${SPRITE_NAME:-}" zsh "$root/libexec/herdr-visuals" "$pane" "$state" "$name" \
+    "${HERDR_ALERT_FLASH:-1}" "${HERDR_ALERT_SPRITE:-1}" &!
 fi
 
 [[ -r "$sound" ]] && sh "$root/libexec/herdr-play-sound" "$sound" "$vol" "${HERDR_ALERT_MAX_SECONDS:-}" &!

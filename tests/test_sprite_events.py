@@ -22,7 +22,7 @@ def check():
         home = Path(temporary)
         plugin = home / 'plugin'
         for name in ('hooks/on-pane-agent-status-changed-alert.zsh',
-                     'libexec/herdr-flash', 'vendor/sprite/sprite.pl'):
+                     'libexec/herdr-flash', 'libexec/herdr-visuals', 'vendor/sprite/sprite.pl'):
             target = plugin / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, target)
