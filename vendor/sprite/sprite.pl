@@ -203,7 +203,7 @@ sub play_once {
 # Keep the animation running as an "I finished, you weren't here" marker and
 # clear it when you come back. kitty has no keystroke event (see
 # kitty-flash-watcher.py), so focus is the closest signal to "you typed in this
-# pane". Skipped when the pane is already focused — you watched it happen.
+# pane". Starting in a focused pane is not a new focus event.
 # `kitty @ ls --match` still prints the whole OS-window/tab tree, so this walks
 # to the window itself rather than pattern-matching the blob. JSON::PP is core.
 #
@@ -244,10 +244,12 @@ sub window_focused {
     return defined($outer) ? $outer : 1;
 }
 
-# Automatic alerts wait for focus; manual previews explicitly disable this.
+# Every alert waits for a return to its pane, including play/menu previews.
 my $loop = $ENV{SPRITE_PERSIST} // 1;
 my $focused = $loop ? window_focused() : undef;
-my $persist = $loop && defined($focused) && !$focused;
+my $persist = $loop && defined($focused);
+warn "herdr-alert: focus tracking is unavailable; sprite will play once.\n"
+    if $loop && !defined($focused);
 
 if ($persist) {
     close $fh;
@@ -258,12 +260,15 @@ if ($persist) {
     my $ttl = $ENV{SPRITE_TTL} || 1800;
     my $gap = $ENV{SPRITE_LOOP_GAP} // 0.6;
     my $waited = 0;
+    my $was_unfocused = !$focused;
     open my $out, '>', $tty or exit 0;
     select((select($out), $| = 1)[0]);
     while ($waited < $ttl) {
         $waited += play_once($out);
         my $focused = window_focused();
-        last if !defined($focused) || $focused; # stop if the pane was closed
+        last unless defined($focused); # stop if the pane was closed
+        last if $was_unfocused && $focused;
+        $was_unfocused = 1 unless $focused;
         select(undef, undef, undef, $gap);
         $waited += $gap;
     }
@@ -272,6 +277,6 @@ if ($persist) {
     exit 0;
 }
 
-play_once($fh);                              # focused pane: one pass and gone
+play_once($fh);                              # one-shot or focus unavailable
 print $fh "\033_Ga=d,d=I,i=$id,q=2\033\\";   # delete image + placements
 close $fh;

@@ -62,15 +62,17 @@ herdr-alert play 1up
 ```
 
 The yellow circular animation is the built-in fallback, not downloaded game artwork.
-Automatic sprites keep animating until you focus the affected pane. Manual previews
-clear after one animation. Focus tracking uses Herdr's pane state, with Kitty window
-focus when available; a 30-minute limit prevents abandoned animations.
+Sprites keep animating until you return to the affected pane, including `play`
+and menu previews. If it is already focused, switch to another pane and back to
+dismiss the sprite. Focus tracking uses Herdr's pane state, with Kitty window
+focus when available; a 30-minute limit prevents abandoned animations. Without
+focus tracking, or with `SPRITE_PERSIST=0`, sprites animate once.
 
 Flashing is on by default. Run `herdr-alert set flash off` to disable flashing, or `herdr-alert set flash on` to enable it. This preference is saved for manual previews (`herdr-alert play` and `alert8play`) and automatic alerts. Herdr does not need to be running for terminal previews.
 
 Outside Herdr, this uses the original `flash-term` background-color effect (OSC 11). It restores Kitty's current background when remote control is available, or resets to the terminal's configured background otherwise. Inside Herdr, it draws and removes a temporary Kitty graphics overlay without changing pane colors; enable `experimental.kitty_graphics = true` in Herdr's configuration. Explicit previews work even when automatic alerts are muted. For background jobs without a terminal, turn both flash and sprite off.
 
-Sprites are on by default for previews and blocked-agent alerts. Use `herdr-alert set sprite off` or `herdr-alert set sprite on` to save your preference. Sprites work independently of flashing; turn both off for sound only. Previews animate once, then clear the image. Cached sprite packs supply game artwork; otherwise a built-in animated indicator appears. Sprite rendering requires Kitty graphics support, either through Herdr or a compatible terminal.
+Sprites are on by default for previews and blocked-agent alerts. Use `herdr-alert set sprite off` or `herdr-alert set sprite on` to save your preference. Sprites work independently of flashing; turn both off for sound only. Cached sprite packs supply game artwork; otherwise a built-in animated indicator appears. Sprite rendering requires Kitty graphics support, either through Herdr or a compatible terminal.
 
 ## Commands
 

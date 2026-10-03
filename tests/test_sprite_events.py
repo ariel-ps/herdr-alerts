@@ -38,14 +38,16 @@ def check():
             os.setsid()
             fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
-        holder = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'],
+        holder = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'],
                                   stdin=slave, stdout=slave, stderr=slave, preexec_fn=attach)
         try:
             herdr = tools / 'herdr'
             response = json.dumps({'result': {'process_info': {'shell_pid': holder.pid}}})
             focus = home / 'focus.json'
             def set_focus(focused):
-                focus.write_text(json.dumps({'result': {'pane': {'focused': focused}}}))
+                temporary_focus = focus.with_suffix('.tmp')
+                temporary_focus.write_text(json.dumps({'result': {'pane': {'focused': focused}}}))
+                temporary_focus.replace(focus)
             herdr.write_text("#!/bin/sh\nif [ \"$2\" = get ]; then cat \"$FOCUS_FILE\"; else printf '%s\\n' '" + response + "'; fi\n")
             herdr.chmod(0o755)
             env = {**os.environ, 'HERDR_PLUGIN_ROOT': str(plugin),
@@ -69,7 +71,7 @@ def check():
                                    check=True, timeout=5)
                     output = b''
                     focused = False
-                    deadline = time.monotonic() + 4
+                    deadline = time.monotonic() + 20
                     while time.monotonic() < deadline:
                         if select.select([master], [], [], .05)[0]:
                             output += os.read(master, 65536)
@@ -85,10 +87,36 @@ def check():
                     assert focused, 'Unfocused sprite did not keep animating'
                     assert b'\x1b_Ga=d,d=I,i=' + ids[0] + b',' in output, 'Sprite not cleared'
                     print(f'PASS: sprite persists until pane focus; envelope={"data" in event}, flash={flash}')
-            # Manual previews still finish when the target pane is unfocused.
+            # The same focus lifecycle applies to play/menu previews. Starting
+            # in a focused pane must not count as returning to acknowledge it.
+            for state, initially_focused in [('preview', False), ('preview', True), ('blocked', True)]:
+                set_focus(initially_focused)
+                preview = subprocess.Popen(['zsh', str(plugin / 'libexec/herdr-visuals'),
+                                            'w1:p1', state, '', '0', '1'], env=env)
+                output = b''
+                left = not initially_focused
+                returned = False
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    if select.select([master], [], [], .05)[0]:
+                        output += os.read(master, 65536)
+                        if b'\x1b_Ga=d,d=I,i=' in output:
+                            assert returned, f'{state} disappeared before focus returned'
+                            break
+                        count = len(re.findall(rb'\x1b_Ga=T,', output))
+                        if not left and count > 14:
+                            set_focus(False)
+                            left = True
+                        elif left and not returned and count > (28 if initially_focused else 14):
+                            set_focus(True)
+                            returned = True
+                assert preview.wait(timeout=3) == 0
+                assert returned and b'\x1b_Ga=d,d=I,i=' in output, 'Focus return did not clear sprite'
+                print(f'PASS: {state} waits for focus return; initially focused={initially_focused}')
+            # Callers can still explicitly request a single animation.
             set_focus(False)
             preview = subprocess.Popen(['zsh', str(plugin / 'libexec/herdr-visuals'),
-                                        'w1:p1', 'preview', '', '0', '1'], env=env)
+                                        'w1:p1', 'preview', '', '0', '1'], env={**env, 'SPRITE_PERSIST': '0'})
             output = b''
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline:
@@ -99,11 +127,11 @@ def check():
             assert preview.wait(timeout=3) == 0
             assert len(re.findall(rb'\x1b_Ga=T,', output)) == 14
             assert b'\x1b_Ga=d,d=I,i=' in output, 'Preview did not clear'
-            print('PASS: unfocused preview clears after one animation')
+            print('PASS: explicit one-shot animation clears')
         finally:
             if 'focus' in locals():
                 set_focus(True)
-            holder.terminate()
+            holder.kill()
             holder.communicate(timeout=5)
             os.close(master)
             os.close(slave)

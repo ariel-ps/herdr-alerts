@@ -46,7 +46,5 @@ if typeset -f __herdr_alert_spec >/dev/null && __herdr_alert_spec "$name"; then
   [[ -z "${SPRITE_NAME:-}" && -n "$alert_sprite" && -r "$SPRITE_DIR/$alert_game/$alert_sprite.rgba" ]] \
     && export SPRITE_NAME="$alert_sprite"
 fi
-# A preview completes after one animation even when its terminal is unfocused.
-[[ "$state" == preview ]] && export SPRITE_PERSIST=0
 perl "$root/vendor/sprite/sprite.pl" "$terminal" "$cols" || exit $?
 exit "$result"
