@@ -1,4 +1,6 @@
+mod auto;
 mod settings;
+mod tui;
 
 use rand::Rng;
 use serde_json::Value;
@@ -23,13 +25,21 @@ const HELP: &str = "Herdr Alert — alerts for your coding agents.
 Usage: herdr-alert COMMAND [OPTIONS]
 
 Commands:
+  configure             Full-screen interactive configuration
+  auto [blocked|done]   Ask the LLM to pick a sound fitting this project's current
+                        branch/commits; cached per git repo. Needs the claude CLI.
   play [NAME]          Preview a sound with your flash and sprite settings
-  list                  Browse sounds and download availability
+  list [PACK]           Browse sounds and download availability, one pack or all
   download [PACK ...]   Download sounds and available sprite artwork
   download --sprites [PACK ...]  Download only sprite artwork
   set blocked|done NAME Choose an automatic alert sound
+  set blocked-sprite|done-sprite NAME  Show a different alert's sprite instead
+  set blocked-sprite|done-sprite default  Use the sound's own paired sprite again
+  set volume blocked|done NUMBER  Set that event's playback volume
+  set duration NUMBER|full  Cap, or stop capping, clip playback length
   set flash on|off     Save the flash setting for previews and automatic alerts
-  set sprite on|off    Save the animation setting for previews and blocked alerts
+  set sprite on|off    Save sprite visibility for previews and blocked alerts
+  set animation on|off  Enable or disable the saved custom animation
   set animation FILE  Import a GIF/animated PNG for previews and blocked alerts
   set animation default  Restore the artwork paired with each sound
   enable / disable     Enable or mute automatic alerts
@@ -73,12 +83,12 @@ fn executable(name: &str) -> Option<PathBuf> {
         })
 }
 
-struct Catalog {
+pub struct Catalog {
     data: Value,
     cache: PathBuf,
 }
 impl Catalog {
-    fn load(root: &Path) -> Result<Self> {
+    pub fn load(root: &Path) -> Result<Self> {
         let data =
             serde_json::from_slice(&fs::read(root.join("data/packs.json")).map_err(failure)?)
                 .map_err(failure)?;
@@ -106,6 +116,36 @@ impl Catalog {
             .or_else(|| self.data["sprite_sound"][spec["sprite"].as_str().unwrap_or("")].as_str())
             .unwrap_or("");
         Ok((game, clip))
+    }
+    /// Every alert name paired with its `vibe` tag, for `herdr-alert auto`'s
+    /// prompt; alerts without one fall back to "a {game} alert" rather than
+    /// being silently dropped from the model's choices.
+    pub fn vibes(&self) -> Result<Vec<(String, String)>> {
+        let alerts = self.data["alerts"]
+            .as_object()
+            .ok_or_else(|| failure("invalid alert catalog"))?;
+        Ok(alerts
+            .iter()
+            .filter(|(name, _)| !name.starts_with('_'))
+            .map(|(name, spec)| {
+                let vibe = spec["vibe"]
+                    .as_str()
+                    .map(String::from)
+                    .unwrap_or_else(|| format!("a {} alert", spec["game"].as_str().unwrap_or("?")));
+                (name.clone(), vibe)
+            })
+            .collect())
+    }
+    fn alert_sprite(&self, name: &str) -> Result<(&str, &str)> {
+        let spec = &self.data["alerts"][name];
+        let game = spec["game"]
+            .as_str()
+            .filter(|s| valid_name(s))
+            .ok_or_else(|| failure(format!("unknown sound '{name}'. Run herdr-alert list.")))?;
+        let sprite = spec["sprite"].as_str().filter(|s| valid_name(s)).ok_or_else(|| {
+            failure(format!("'{name}' has no sprite of its own. Run herdr-alert list."))
+        })?;
+        Ok((game, sprite))
     }
     fn resolve(&self, name: &str) -> Result<PathBuf> {
         let (game, clip) = self.alert(name)?;
@@ -136,13 +176,29 @@ impl Catalog {
         }
         Ok(files[rand::rng().random_range(0..files.len())].clone())
     }
-    fn list(&self) -> Result<()> {
+    fn list(&self, filter: Option<&str>) -> Result<()> {
+        if let Some(game) = filter {
+            let known = self.data["games"]
+                .as_object()
+                .ok_or_else(|| failure("invalid pack catalog"))?;
+            if !known.contains_key(game) {
+                return Err(usage(format!(
+                    "Unknown game pack: {game}. Available: {}",
+                    known.keys().filter(|n| valid_name(n)).cloned().collect::<Vec<_>>().join(", ")
+                )));
+            }
+        }
         println!("{:<12} {:<10} {:<10} CLIP", "SOUND", "PACK", "STATUS");
         let alerts = self.data["alerts"]
             .as_object()
             .ok_or_else(|| failure("invalid alert catalog"))?;
+        let mut shown = 0;
         for name in alerts.keys().filter(|name| !name.starts_with('_')) {
             let (game, clip) = self.alert(name)?;
+            if filter.is_some_and(|f| f != game) {
+                continue;
+            }
+            shown += 1;
             let status = if self.resolve(name).is_ok() {
                 "ready"
             } else {
@@ -152,6 +208,9 @@ impl Catalog {
                 "{name:<12} {game:<10} {status:<10} {}",
                 if clip.is_empty() { "(any)" } else { clip }
             );
+        }
+        if shown == 0 {
+            println!("(no alerts for this pack)");
         }
         println!("\nPreview:  herdr-alert play NAME\nDownload: herdr-alert download PACK");
         Ok(())
@@ -196,13 +255,19 @@ impl Catalog {
                         .arg(root.join("libexec/fetch-redalert-sounds.py"));
                 } else {
                     let source = packs[game]["sounds"].as_str().unwrap();
-                    let identifier = source
-                        .strip_prefix("archive:")
-                        .ok_or_else(|| failure(format!("unsupported source: {source}")))?;
-                    command
-                        .arg("python")
-                        .arg(root.join("libexec/fetch-game-sounds.py"))
-                        .arg(identifier);
+                    if let Some(identifier) = source.strip_prefix("archive:") {
+                        command
+                            .arg("python")
+                            .arg(root.join("libexec/fetch-game-sounds.py"))
+                            .arg(identifier);
+                    } else if let Some(url) = source.strip_prefix("git:") {
+                        command
+                            .arg("python")
+                            .arg(root.join("libexec/fetch-git-sounds.py"))
+                            .arg(url);
+                    } else {
+                        return Err(failure(format!("unsupported source: {source}")));
+                    }
                 }
                 if !command
                     .arg(self.cache.join(game))
@@ -211,6 +276,21 @@ impl Catalog {
                     .success()
                 {
                     failed = true;
+                }
+                if game == "dangerousdave" {
+                    // The original game's run cycle has no sound of its own;
+                    // reproduce a period-correct footstep instead of an alert
+                    // nothing was ever recorded for.
+                    if !Command::new(&uv)
+                        .args(["run", "--no-project", "python"])
+                        .arg(root.join("libexec/synth-dave-walk.py"))
+                        .arg(self.cache.join(game))
+                        .status()
+                        .map_err(failure)?
+                        .success()
+                    {
+                        failed = true;
+                    }
                 }
             }
             if packs[game]["sprites"].is_string() {
@@ -311,6 +391,64 @@ fn play_file(path: &Path, volume: &str, duration: &str) -> Result<()> {
     Ok(())
 }
 
+fn preview(root: &Path, name: Option<&str>, flash_flag: bool) -> Result<()> {
+    let config = settings::Config::load(root)?;
+    let flash = flash_flag || config.flash_enabled();
+    let sprite = matches!(config.get("HERDR_ALERT_SPRITE"), "" | "1");
+    let pane = env::var("HERDR_PANE_ID").unwrap_or_default();
+    if (flash || sprite)
+        && !pane
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':'))
+    {
+        return Err(failure(
+            "invalid HERDR_PANE_ID; unset it when running outside Herdr.",
+        ));
+    }
+    let path = if let Some(name) = name {
+        Catalog::load(root)?.resolve(name)?
+    } else {
+        root.join("assets/audio/8bit-alert.wav")
+    };
+    println!("Playing {}...", name.unwrap_or("included tone"));
+    let volume = config.get("HERDR_VOLUME_DONE");
+    let mut visual = if flash || sprite {
+        Some(
+            Command::new("zsh")
+                .arg(root.join("libexec/herdr-visuals"))
+                .arg(&pane)
+                .arg("preview")
+                .arg(name.unwrap_or(""))
+                .arg(if flash { "1" } else { "0" })
+                .arg(if sprite { "1" } else { "0" })
+                .env("SPRITE_FILE", config.get("HERDR_ALERT_ANIMATION"))
+                .env(
+                    "HERDR_ALERT_ANIMATION_ENABLED",
+                    config.get("HERDR_ALERT_ANIMATION_ENABLED"),
+                )
+                .spawn()
+                .map_err(failure)?,
+        )
+    } else {
+        None
+    };
+    let audio = play_file(
+        &path,
+        if volume.is_empty() { "1.0" } else { volume },
+        config.get("HERDR_ALERT_MAX_SECONDS"),
+    );
+    let visual = visual
+        .as_mut()
+        .map(|child| child.wait())
+        .transpose()
+        .map_err(failure)?;
+    audio?;
+    if visual.is_some_and(|status| !status.success()) {
+        return Err(failure("visual effects did not complete"));
+    }
+    Ok(())
+}
+
 fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<()> {
     println!(
         "Herdr Alert\n\n  {:<18} {}",
@@ -328,10 +466,19 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
     );
     let duration = config.get("HERDR_ALERT_MAX_SECONDS");
     let animation = config.get("HERDR_ALERT_ANIMATION");
+    println!(
+        "  {:<18} {} (custom artwork; sprites must also be on)",
+        "Animation",
+        if matches!(config.get("HERDR_ALERT_ANIMATION_ENABLED"), "" | "1") {
+            "on"
+        } else {
+            "off"
+        }
+    );
     if !animation.is_empty() {
         println!(
             "  {:<18} {}{}",
-            "Animation",
+            "Animation file",
             animation,
             if Path::new(animation).is_file() {
                 ""
@@ -389,6 +536,10 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
             volume
         };
         println!("  {event:<10} {volume:<8} {name} ({availability})");
+        let sprite_override = config.get(&format!("HERDR_SPRITE_{upper}"));
+        if !sprite_override.is_empty() {
+            println!("             sprite override: {sprite_override}");
+        }
     }
     let player = executable("afplay")
         .or_else(|| executable("ffplay"))
@@ -409,7 +560,7 @@ fn execute(mut args: Vec<String>) -> Result<()> {
         match args.first().map(String::as_str) {
             Some("--list") if args.len() == 1 => args = vec!["list".into()],
             Some("--help" | "-h") if args.len() == 1 => {
-                println!("usage: alert8play [NAME]\n       alert8play --list | --help\nCompatibility command for herdr-alert play.\nSettings: herdr-alert set flash|sprite on|off");
+                println!("usage: alert8play [NAME]\n       alert8play --list | --help\nCompatibility command for herdr-alert play.\nSettings: herdr-alert set flash|sprite|animation on|off");
                 return Ok(());
             }
             _ => args.insert(0, "play".into()),
@@ -452,59 +603,11 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                     return Err(usage("usage: herdr-alert play [NAME] [--flash]"));
                 }
             }
-            let config = settings::Config::load(&root)?;
-            flash |= config.flash_enabled();
-            let sprite = matches!(config.get("HERDR_ALERT_SPRITE"), "" | "1");
-            let pane = env::var("HERDR_PANE_ID").unwrap_or_default();
-            if (flash || sprite)
-                && !pane
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':'))
-            {
-                return Err(failure(
-                    "invalid HERDR_PANE_ID; unset it when running outside Herdr.",
-                ));
-            }
-            let path = if let Some(name) = name {
-                Catalog::load(&root)?.resolve(name)?
-            } else {
-                root.join("assets/audio/8bit-alert.wav")
-            };
-            println!("Playing {}...", name.unwrap_or("included tone"));
-            let volume = config.get("HERDR_VOLUME_DONE");
-            let mut visual = if flash || sprite {
-                Some(
-                    Command::new("zsh")
-                        .arg(root.join("libexec/herdr-visuals"))
-                        .arg(&pane)
-                        .arg("preview")
-                        .arg(name.unwrap_or(""))
-                        .arg(if flash { "1" } else { "0" })
-                        .arg(if sprite { "1" } else { "0" })
-                        .env("SPRITE_FILE", config.get("HERDR_ALERT_ANIMATION"))
-                        .spawn()
-                        .map_err(failure)?,
-                )
-            } else {
-                None
-            };
-            let audio = play_file(
-                &path,
-                if volume.is_empty() { "1.0" } else { volume },
-                config.get("HERDR_ALERT_MAX_SECONDS"),
-            );
-            let visual = visual
-                .as_mut()
-                .map(|child| child.wait())
-                .transpose()
-                .map_err(failure)?;
-            audio?;
-            if visual.is_some_and(|status| !status.success()) {
-                return Err(failure("visual effects did not complete"));
-            }
-            Ok(())
+            preview(&root, name, flash)
         }
-        "list" if args.len() == 1 => Catalog::load(&root)?.list(),
+        "configure" if args.len() == 1 => tui::run(&root),
+        "auto" if args.len() <= 2 => auto::run(&root, args.get(1).map(String::as_str)),
+        "list" if args.len() <= 2 => Catalog::load(&root)?.list(args.get(1).map(String::as_str)),
         "status" if args.len() == 1 => status(
             &root,
             &Catalog::load(&root)?,
@@ -540,7 +643,11 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             );
             Ok(())
         }
-        "set" if args.len() == 3 && args[1] == "animation" => {
+        "set"
+            if args.len() == 3
+                && args[1] == "animation"
+                && !["on", "off"].contains(&args[2].as_str()) =>
+        {
             let animation = if args[2] == "default" {
                 String::new()
             } else {
@@ -568,10 +675,12 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                 path
             };
             settings::save(&root, &[("HERDR_ALERT_ANIMATION".into(), animation)])?;
-            println!("Animation updated. Preview: herdr-alert play\nSprites must be enabled: herdr-alert set sprite on");
+            println!("Animation updated. Preview: herdr-alert play\nEnable it with: herdr-alert set animation on\nSprites must be enabled: herdr-alert set sprite on");
             Ok(())
         }
-        "set" if args.len() == 3 && ["flash", "sprite"].contains(&args[1].as_str()) => {
+        "set"
+            if args.len() == 3 && ["flash", "sprite", "animation"].contains(&args[1].as_str()) =>
+        {
             let value = match args[2].as_str() {
                 "on" => "1",
                 "off" => "0",
@@ -580,11 +689,20 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             settings::save(
                 &root,
                 &[(
-                    format!("HERDR_ALERT_{}", args[1].to_uppercase()),
+                    if args[1] == "animation" {
+                        "HERDR_ALERT_ANIMATION_ENABLED".into()
+                    } else {
+                        format!("HERDR_ALERT_{}", args[1].to_uppercase())
+                    },
                     value.into(),
                 )],
             )?;
-            if args[1] == "sprite" {
+            if args[1] == "animation" {
+                println!(
+                    "Animation {} (custom artwork; sprites must also be on).",
+                    args[2]
+                );
+            } else if args[1] == "sprite" {
                 println!("Sprite {} (previews and blocked-agent alerts).", args[2]);
             } else {
                 println!("Flash {} (previews and automatic alerts).", args[2]);
@@ -609,6 +727,56 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             println!(
                 "Updated {} sound to {}.\nPreview: herdr-alert play {}",
                 args[1], args[2], args[2]
+            );
+            Ok(())
+        }
+        "set"
+            if args.len() == 3 && ["blocked-sprite", "done-sprite"].contains(&args[1].as_str()) =>
+        {
+            let event = args[1].trim_end_matches("-sprite").to_uppercase();
+            let value = if args[2] == "default" {
+                String::new()
+            } else {
+                let catalog = Catalog::load(&root)?;
+                let (game, sprite) = catalog.alert_sprite(&args[2])?;
+                format!("{game}:{sprite}")
+            };
+            settings::save(&root, &[(format!("HERDR_SPRITE_{event}"), value)])?;
+            println!(
+                "{} now shows {}'s sprite.\nPreview the paired sound separately: herdr-alert play {}",
+                args[1], args[2], args[2]
+            );
+            Ok(())
+        }
+        "set" if args.len() == 4 && args[1] == "volume" && ["blocked", "done"].contains(&args[2].as_str()) =>
+        {
+            let volume = args[3]
+                .parse::<f64>()
+                .ok()
+                .filter(|v| v.is_finite() && *v >= 0.0)
+                .ok_or_else(|| usage("volume must be a finite nonnegative number"))?;
+            settings::save(
+                &root,
+                &[(format!("HERDR_VOLUME_{}", args[2].to_uppercase()), volume.to_string())],
+            )?;
+            println!("Updated {} volume to {volume}.", args[2]);
+            Ok(())
+        }
+        "set" if args.len() == 3 && args[1] == "duration" => {
+            let value = if args[2] == "full" {
+                String::new()
+            } else {
+                let seconds = args[2]
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|v| v.is_finite() && *v > 0.0)
+                    .ok_or_else(|| usage("duration must be a finite positive number, or full"))?;
+                seconds.to_string()
+            };
+            settings::save(&root, &[("HERDR_ALERT_MAX_SECONDS".into(), value)])?;
+            println!(
+                "Duration {}.",
+                if args[2] == "full" { "uncapped".into() } else { format!("capped at {} seconds", args[2]) }
             );
             Ok(())
         }

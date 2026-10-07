@@ -224,7 +224,8 @@ exit "${PLAYBACK_EXIT:-0}"
         assert invoke('sync', extra_env=sync_env, command='herdr-sound').returncode == 0
         packs = json.loads((plugin / 'data/packs.json').read_text())['games']
         assert sync_log.read_text().splitlines().count('run') == sum(
-            (1 + bool(spec.get('sprites'))) for spec in packs.values()
+            (1 + bool(spec.get('sprites')) + (name == 'dangerousdave'))
+            for name, spec in packs.items()
             if isinstance(spec, dict) and spec.get('sounds'))
         assert 'pycryptodome' in sync_log.read_text()
         assert 'pillow' in sync_log.read_text()
@@ -422,7 +423,7 @@ def check_sprite_settings():
             'herdr': '#!/bin/sh\necho \'{"result":{"process_info":{"shell_pid":123}}}\'\n',
             'ps': '#!/bin/sh\nprintf "%s\\n" "$TEST_TTY"\n',
             'stty': '#!/bin/sh\nprintf "24 80\\n"\n',
-            'perl': '#!/bin/sh\necho sprite >> "$EFFECT_LOG"\n',
+            'perl': '#!/bin/sh\necho "${SPRITE_FILE:-sprite}" >> "$EFFECT_LOG"\n',
             'afplay': '#!/bin/sh\nexit 0\n',
         }.items():
             path = stubs / name
@@ -486,6 +487,35 @@ def check_sprite_settings():
                 while sorted(log.read_text().splitlines()) != sorted(expected) and time.monotonic() < deadline:
                     time.sleep(0.01)
                 assert sorted(log.read_text().splitlines()) == sorted(expected), (flash, sprite, state, log.read_text(), result.stderr)
+            # Toggle the custom artwork without losing it or changing sprite visibility.
+            with (config / 'config.sh').open('a') as settings:
+                settings.write("\nHERDR_ALERT_ANIMATION='/saved custom animation.rgba'\n")
+            cli('enable')
+            cli('set', 'flash', 'off')
+            for animation, sprite in [(None, 'on'), ('off', 'on'), ('on', 'on'), ('on', 'off')]:
+                if animation is not None:
+                    cli('set', 'animation', animation)
+                cli('set', 'sprite', sprite)
+                saved = (config / 'config.sh').read_text()
+                assert "HERDR_ALERT_ANIMATION='/saved custom animation.rgba'" in saved
+                assert f"HERDR_ALERT_SPRITE='{int(sprite == 'on')}'" in saved
+                enabled = animation or 'on'
+                assert f'{enabled} (custom artwork; sprites must also be on)' in cli('status')
+                for state in ('preview', 'blocked', 'done'):
+                    log.write_text('')
+                    run_env = {**env, 'HERDR_PLUGIN_ROOT': str(plugin), 'HERDR_PANE_ID': 'wN:p3',
+                               'HERDR_PLUGIN_EVENT_JSON': json.dumps({'pane_id': 'wN:p3', 'agent_status': state})}
+                    command = [binary, 'play'] if state == 'preview' else [
+                        'zsh', str(ROOT / 'hooks/on-pane-agent-status-changed-alert.zsh')]
+                    result = subprocess.run(command, env=run_env, text=True, capture_output=True, timeout=5)
+                    assert result.returncode == 0, result.stderr
+                    expected = [] if state == 'preview' else ['audio']
+                    if sprite == 'on' and state != 'done':
+                        expected.append('/saved custom animation.rgba' if enabled == 'on' else 'sprite')
+                    deadline = time.monotonic() + 2
+                    while sorted(log.read_text().splitlines()) != sorted(expected) and time.monotonic() < deadline:
+                        time.sleep(.01)
+                    assert sorted(log.read_text().splitlines()) == sorted(expected), (animation, sprite, state)
         finally:
             os.close(master)
             os.close(slave)

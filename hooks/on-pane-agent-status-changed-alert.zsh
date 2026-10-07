@@ -31,7 +31,17 @@
 #   HERDR_SOUND_DONE=<path>
 #   HERDR_VOLUME_BLOCKED / HERDR_VOLUME_DONE    afplay -v
 #   HERDR_ALERT_MAX_SECONDS     cap a clip, default 3, empty plays it in full
+#   HERDR_SPRITE_BLOCKED=<game>:<sprite>  show a different alert's sprite
+#   HERDR_SPRITE_DONE=<game>:<sprite>     instead of the sound alert's own
 #   SPRITE_NAME=<name>          override the sprite the alert chose
+#
+# `herdr-alert auto` LLM-picks a name per git project from its branch and
+# commits, caching it in ${XDG_DATA_HOME:-~/.local/share}/herdr-alert/projects.json
+# keyed by repo root. Consulted here only when that file exists, so an
+# install that never runs `auto` pays nothing extra: one `herdr pane get`
+# and one more `jq` read, to turn the firing pane's cwd into its project's
+# pick, which then stands in for HERDR_ALERT_BLOCKED/DONE for this alert
+# only (a literal HERDR_SOUND_* path still wins over it, same as a name).
 #
 # Manual previews use the same saved flash setting:
 #   herdr-sound list
@@ -105,11 +115,40 @@ pane=$(print -r -- "${HERDR_PLUGIN_EVENT_JSON:-}" | jq -r '(.data // .) | .pane_
 # fire constantly and would turn the alert into noise nobody reacts to.
 case "$state" in
   blocked) name="${HERDR_ALERT_BLOCKED:-}"; override="${HERDR_SOUND_BLOCKED:-}"
-           sound="$root/assets/audio/8bit-alert.wav"; vol="${HERDR_VOLUME_BLOCKED:-1.8}" ;;
+           sound="$root/assets/audio/8bit-alert.wav"; vol="${HERDR_VOLUME_BLOCKED:-1.8}"
+           sprite_pick="${HERDR_SPRITE_BLOCKED:-}" ;;
   done)    name="${HERDR_ALERT_DONE:-}";    override="${HERDR_SOUND_DONE:-}"
-           sound="$root/assets/audio/8bit-alert.wav"; vol="${HERDR_VOLUME_DONE:-1.0}" ;;
+           sound="$root/assets/audio/8bit-alert.wav"; vol="${HERDR_VOLUME_DONE:-1.0}"
+           sprite_pick="${HERDR_SPRITE_DONE:-}" ;;
   *)       exit 0 ;;
 esac
+
+# A project-scoped pick from `herdr-alert auto`, consulted only when that
+# cache file exists; wins over the plain global name but not a literal
+# HERDR_SOUND_* path. One extra `herdr pane get` plus one `jq` read, paid
+# only by installs that have actually run `herdr-alert auto` at least once.
+projects_file="${XDG_DATA_HOME:-$HOME/.local/share}/herdr-alert/projects.json"
+if [[ -r "$projects_file" && -n "$pane" && "$pane" != *[^a-zA-Z0-9_:-]* ]]; then
+  pane_cwd=$("${HERDR_BIN_PATH:-herdr}" pane get "$pane" 2>/dev/null | jq -r '.result.pane.cwd // empty' 2>/dev/null)
+  if [[ -n "$pane_cwd" ]]; then
+    project_pick=$(jq -r --arg cwd "$pane_cwd" --arg event "$state" '
+      to_entries
+      | map(select(.key as $k | ($cwd == $k) or ($cwd | startswith($k + "/"))))
+      | sort_by(.key | length)
+      | last
+      | if . then (.value[$event] // empty) else empty end
+    ' "$projects_file" 2>/dev/null)
+    [[ -n "$project_pick" ]] && name="$project_pick"
+  fi
+fi
+
+# "<game>:<sprite>" picked by `set blocked-sprite|done-sprite`; herdr-visuals
+# re-checks it is actually downloaded and falls back to the sound alert's own
+# sprite (or none) otherwise, same degrade-one-step philosophy as everywhere
+# else here.
+sprite_game_pick="${sprite_pick%%:*}"
+sprite_name_pick="${sprite_pick#*:}"
+[[ "$sprite_pick" == *:* ]] || { sprite_game_pick=; sprite_name_pick=; }
 
 # A literal path is the user saying exactly what to play, so it outranks a name;
 # a name outranks the bundled clip; the bundled clip is always there.
@@ -123,7 +162,10 @@ fi
 
 # Flash first so the light and the sound land together rather than in sequence.
 if [[ -n "$pane" && "$pane" != *[^a-zA-Z0-9_:-]* ]]; then
-  SPRITE_FILE="${HERDR_ALERT_ANIMATION:-}" SPRITE_NAME="${SPRITE_NAME:-}" zsh "$root/libexec/herdr-visuals" "$pane" "$state" "$name" \
+  export HERDR_ALERT_ANIMATION_ENABLED="${HERDR_ALERT_ANIMATION_ENABLED:-1}"
+  SPRITE_FILE="${HERDR_ALERT_ANIMATION:-}" \
+  SPRITE_GAME="${sprite_game_pick:-}" SPRITE_NAME="${SPRITE_NAME:-$sprite_name_pick}" \
+  zsh "$root/libexec/herdr-visuals" "$pane" "$state" "$name" \
     "${HERDR_ALERT_FLASH:-1}" "${HERDR_ALERT_SPRITE:-1}" &!
 fi
 

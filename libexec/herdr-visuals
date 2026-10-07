@@ -20,6 +20,7 @@ if [[ "$flash" == 1 ]]; then
   zsh "$root/libexec/herdr-flash" "$pane" "$flash_state" || result=$?
 fi
 [[ "$sprite" == 1 && "$state" != done ]] || exit "$result"
+[[ "${HERDR_ALERT_ANIMATION_ENABLED:-1}" == 1 ]] || export SPRITE_FILE=''
 
 terminal=/dev/tty
 if [[ -n "$pane" ]]; then
@@ -40,9 +41,18 @@ fi
 
 export SPRITE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit/sprites"
 export SPRITE_PANE_ID="$pane"
+
+# A caller-supplied game+sprite pair (e.g. `set blocked-sprite`) wins, but only
+# if it is actually downloaded; an override pointing at a pack nobody fetched
+# yet degrades to the sound alert's own sprite rather than drawing nothing.
+if [[ -n "${SPRITE_GAME:-}" && -n "${SPRITE_NAME:-}" ]] \
+   && ! [[ -r "$SPRITE_DIR/$SPRITE_GAME/$SPRITE_NAME.rgba" ]]; then
+  unset SPRITE_GAME SPRITE_NAME
+fi
+
 [[ -r "$root/generated/alerts.zsh" ]] && source "$root/generated/alerts.zsh"
 if typeset -f __herdr_alert_spec >/dev/null && __herdr_alert_spec "$name"; then
-  export SPRITE_GAME="$alert_game"
+  [[ -z "${SPRITE_GAME:-}" ]] && export SPRITE_GAME="$alert_game"
   [[ -z "${SPRITE_NAME:-}" && -n "$alert_sprite" && -r "$SPRITE_DIR/$alert_game/$alert_sprite.rgba" ]] \
     && export SPRITE_NAME="$alert_sprite"
 fi

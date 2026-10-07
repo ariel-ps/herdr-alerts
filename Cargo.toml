@@ -9,3 +9,5 @@ description = "Play and configure Herdr alert sounds"
 [dependencies]
 serde_json = "1.0"
 rand = "0.9"
+ratatui = "0.29"
+crossterm = "0.28"

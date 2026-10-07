@@ -30,13 +30,18 @@ __herdr_alert_spec() {
     spin) alert_game='sonic'; alert_sprite='spin' ;;
     codec) alert_game='metalgear' ;;
     kirby) alert_game='kirby' ;;
+    dave) alert_game='dangerousdave'; alert_clip='oneUp'; alert_sprite='walk' ;;
+    davejump) alert_game='dangerousdave'; alert_clip='jump'; alert_sprite='jump' ;;
+    davedeath) alert_game='dangerousdave'; alert_clip='death' ;;
+    davewin) alert_game='dangerousdave'; alert_clip='next_level'; alert_sprite='walk' ;;
+    davewalk) alert_game='dangerousdave'; alert_clip='walk'; alert_sprite='walk' ;;
     *) return 1 ;;
   esac
 }
 
 # Every name, for the hook's `--list` mode and for tab completion.
 __herdr_alert_names() {
-  print -r -- 'unit-ready tesla harvester orca kaboom redalert win 1up coin powerup die gameover waiting dk barrel punchout spin codec kirby'
+  print -r -- 'unit-ready tesla harvester orca kaboom redalert win 1up coin powerup die gameover waiting dk barrel punchout spin codec kirby dave davejump davedeath davewin davewalk'
 }
 
 # herdr transition -> the alert it plays when nothing overrides it.

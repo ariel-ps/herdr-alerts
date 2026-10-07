@@ -74,6 +74,18 @@ Outside Herdr, this uses the original `flash-term` background-color effect (OSC 
 
 Sprites are on by default for previews and blocked-agent alerts. Use `herdr-alert set sprite off` or `herdr-alert set sprite on` to save your preference. Sprites work independently of flashing; turn both off for sound only. Cached sprite packs supply game artwork; otherwise a built-in animated indicator appears. Sprite rendering requires Kitty graphics support, either through Herdr or a compatible terminal.
 
+## Let the LLM pick a sound per project
+
+```sh
+cd ~/projects/my-repo
+herdr-alert auto              # Picks and saves both blocked and done for this project
+herdr-alert auto blocked      # Picks and saves just one
+```
+
+Reads the current git branch name and last few commit subjects, and asks the installed `claude` CLI to pick the best-fitting sound from the full catalog's short vibe tags (a bugfix branch tends to land on something like `die`; a feature branch on something like `davewin`). Requires Claude Code installed and signed in; costs a small amount per run (well under a cent on Haiku) and takes a few seconds, so it only runs when you ask for it — never automatically from an alert itself.
+
+The pick is saved per git repository (by its root path) in `${XDG_DATA_HOME:-~/.local/share}/herdr-alert/projects.json`, and applies to every pane working in that project or a subdirectory of it, overriding the global `set blocked`/`set done` choice but not a literal `HERDR_SOUND_*` override. Projects that never run `herdr-alert auto` are completely unaffected. Re-run it any time — for example after switching branches — to update the pick.
+
 ## Use your own animation
 
 Import a GIF or animated PNG containing the complete scene, such as a character
@@ -82,7 +94,9 @@ jumping over an obstacle:
 ```sh
 herdr-alert set animation ./jump-scene.gif
 herdr-alert set sprite on
+herdr-alert set animation on
 herdr-alert play
+herdr-alert set animation off      # Use normal sprites; keep the imported scene saved
 herdr-alert set animation default  # Return to each sound's paired artwork
 ```
 
@@ -95,20 +109,30 @@ last up to 30 seconds per cycle, and occupy up to 64 MiB when decoded.
 A focused pane plays the whole scene once. An unfocused pane loops it without a
 pause between cycles and clears it when you return. Sound plays once per alert.
 Custom scenes apply to previews and needs-attention alerts; finished alerts keep
-their existing sound and flash behavior. Sprite on/off still controls visibility.
+their existing sound and flash behavior. Use `herdr-alert set animation off` to
+use normal sprites while keeping your scene saved, and `herdr-alert set animation on`
+to restore it. Custom animations are enabled by default. Sprite on/off still
+controls visibility of both normal sprites and custom animations.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
+| `herdr-alert configure` | Full-screen interactive configuration (alerts, settings, downloads, status) |
 | `herdr-alert play [NAME]` | Preview sound, flash, and sprite using your saved settings |
-| `herdr-alert list` | Browse sounds and see which are ready |
+| `herdr-alert list [PACK]` | Browse sounds and see which are ready, optionally one pack at a time |
 | `herdr-alert download [PACK ...]` | Download sounds and available sprites; omit PACK for all packs |
 | `herdr-alert download --sprites [PACK ...]` | Download only sprite artwork |
+| `herdr-alert auto [blocked\|done]` | LLM-pick a sound fitting this project's branch/commits; cached per repo |
 | `herdr-alert set blocked NAME` | Choose the needs-attention sound |
 | `herdr-alert set done NAME` | Choose the finished sound |
+| `herdr-alert set blocked-sprite\|done-sprite NAME` | Show a different alert's sprite instead of the sound's own |
+| `herdr-alert set blocked-sprite\|done-sprite default` | Use the sound alert's own sprite again |
+| `herdr-alert set volume blocked\|done NUMBER` | Set that event's playback volume |
+| `herdr-alert set duration NUMBER\|full` | Cap, or stop capping, clip playback length |
 | `herdr-alert set flash on\|off` | Save the flash preference for previews and automatic alerts |
 | `herdr-alert set sprite on\|off` | Save the sprite preference for previews and blocked-agent alerts |
+| `herdr-alert set animation on\|off` | Enable or disable custom artwork without clearing the imported scene |
 | `herdr-alert set animation FILE` | Import a GIF or animated PNG for previews and needs-attention alerts |
 | `herdr-alert set animation default` | Restore the artwork paired with each sound |
 | `herdr-alert enable` | Enable automatic alerts |
@@ -133,9 +157,10 @@ HERDR_VOLUME_DONE=1.0
 HERDR_ALERT_MAX_SECONDS=3
 HERDR_ALERT_FLASH=1   # 0 disables flashing
 HERDR_ALERT_SPRITE=1  # 0 disables sprites
+HERDR_ALERT_ANIMATION_ENABLED=1  # 0 uses normal sprites instead of custom artwork
 ```
 
-Previews use the done-volume and duration settings. The CLI saves sound choices, flash and sprite preferences, and enabled state in a marked section at the end of this file, backing up existing settings. `set blocked` and `set done` also clear that event's custom file override.
+Previews use the done-volume and duration settings. The CLI saves sound choices, flash, sprite and animation preferences, and enabled state in a marked section at the end of this file, backing up existing settings. `set blocked` and `set done` also clear that event's custom file override.
 
 ## No sound?
 

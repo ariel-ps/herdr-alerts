@@ -8,7 +8,7 @@
   ],
 
   "games": {
-    "_comment": "game -> media sources. archive:<item> is an archive.org id, git:<url> a sprite source repo, mix:<item> encrypted game archives. HTTPS sprite ZIPs use sprites_sha256 for integrity.",
+    "_comment": "game -> media sources. archive:<item> is an archive.org id, git:<url> a source repo (sprites, or sounds when the repo ships its own named clips), mix:<item> encrypted game archives. HTTPS sprite ZIPs use sprites_sha256 for integrity.",
     "mario":     { "sounds": "archive:mario_nes_snes_sounds",
                    "sprites": "git:https://github.com/justinmeister/Mario-Level-1" },
     "mvdk":      { "sounds": "archive:131_20220817",
@@ -23,7 +23,9 @@
                    "sprites": "https://openra.baxxster.no/openra/ra-base.zip",
                    "sprites_sha256": "4d3c14b2c6a00c042df16a99ff00ede8aa177e0d21a87cb43f84fbe73af56280" },
     "doom":      { "sounds": null,
-                   "sprites": "git:https://github.com/Doom-Utils/shareware-collection" }
+                   "sprites": "git:https://github.com/Doom-Utils/shareware-collection" },
+    "dangerousdave": { "sounds": "git:https://github.com/lightest/webdave",
+                       "sprites": "git:https://github.com/lightest/webdave" }
   },
 
   "redalert_sprites": ["1tnk", "harv", "tsla", "orca", "mgun", "veh-hit1"],
@@ -57,29 +59,38 @@
       "A clip comes from `clip` (exact basename), `mood` (looked up in moods), or",
       "`sprite` (looked up in sprite_sound) — in that order. An alert with none of",
       "them plays a random clip from its game, which is the only thing worth doing",
-      "for the packs whose clips are numbered rather than named."
+      "for the packs whose clips are numbered rather than named.",
+      "`vibe` is a short English tag read only by `herdr-alert auto`, so an LLM",
+      "picking a project-fitting alert from branch names and commit messages has",
+      "something to match against; it is not read by the hook or the build step."
     ],
-    "unit-ready": { "game": "redalert", "sprite": "1tnk" },
-    "tesla":      { "game": "redalert", "sprite": "tsla" },
-    "harvester":  { "game": "redalert", "sprite": "harv" },
-    "orca":       { "game": "redalert", "sprite": "orca" },
-    "kaboom":     { "game": "redalert", "sprite": "veh-hit1" },
-    "redalert":   { "game": "redalert" },
+    "unit-ready": { "game": "redalert", "sprite": "1tnk", "vibe": "a unit awaiting orders -- calm readiness" },
+    "tesla":      { "game": "redalert", "sprite": "tsla", "vibe": "a tesla coil charging up -- aggressive offense, combat energy" },
+    "harvester":  { "game": "redalert", "sprite": "harv", "vibe": "resource harvesting -- steady accumulation, data/ETL work" },
+    "orca":       { "game": "redalert", "sprite": "orca", "vibe": "an airstrike inbound -- fast, decisive attack" },
+    "kaboom":     { "game": "redalert", "sprite": "veh-hit1", "vibe": "an explosion -- something just broke loudly, a crash or outage" },
+    "redalert":   { "game": "redalert", "vibe": "general wartime alarm -- urgent, all-hands incident" },
 
-    "win":        { "game": "mario", "mood": "done",    "sprite": "star" },
-    "1up":        { "game": "mario", "mood": "success", "sprite": "mushroom" },
-    "coin":       { "game": "mario", "mood": "coin" },
-    "powerup":    { "game": "mario", "mood": "powerup", "sprite": "fireflower" },
-    "die":        { "game": "mario", "mood": "error",   "sprite": "goomba" },
-    "gameover":   { "game": "mario", "mood": "fatal",   "sprite": "koopa" },
-    "waiting":    { "game": "mario", "mood": "waiting", "sprite": "jump" },
+    "win":        { "game": "mario", "mood": "done",    "sprite": "star", "vibe": "stage-clear fanfare -- a clean, satisfying finish" },
+    "1up":        { "game": "mario", "mood": "success", "sprite": "mushroom", "vibe": "earning an extra life -- a nice win, shipped/merged" },
+    "coin":       { "game": "mario", "mood": "coin", "vibe": "a coin pickup -- small steady progress, one step at a time" },
+    "powerup":    { "game": "mario", "mood": "powerup", "sprite": "fireflower", "vibe": "gaining a power-up -- an upgrade, a dependency bump, new capability" },
+    "die":        { "game": "mario", "mood": "error",   "sprite": "goomba", "vibe": "a death jingle -- a bug fix, a crash, something failed" },
+    "gameover":   { "game": "mario", "mood": "fatal",   "sprite": "koopa", "vibe": "game over -- a fatal error, a hard abort, a severe regression" },
+    "waiting":    { "game": "mario", "mood": "waiting", "sprite": "jump", "vibe": "treading water -- blocked on review, waiting on something external" },
 
-    "dk":         { "game": "mvdk",      "sprite": "dk" },
-    "barrel":     { "game": "mvdk",      "sprite": "barrel" },
-    "punchout":   { "game": "punchout",  "sprite": "mac" },
-    "spin":       { "game": "sonic",     "sprite": "spin" },
-    "codec":      { "game": "metalgear" },
-    "kirby":      { "game": "kirby" }
+    "dk":         { "game": "mvdk",      "sprite": "dk", "vibe": "a boss looming over the work -- a big, imposing refactor or migration" },
+    "barrel":     { "game": "mvdk",      "sprite": "barrel", "vibe": "dodging rolling barrels -- firefighting, dealing with a stream of obstacles" },
+    "punchout":   { "game": "punchout",  "sprite": "mac", "vibe": "a boxing match -- a head-to-head fight, adversarial debugging, a tough opponent bug" },
+    "spin":       { "game": "sonic",     "sprite": "spin", "vibe": "a speed dash -- fast-moving work, a quick turnaround, performance tuning" },
+    "codec":      { "game": "metalgear", "vibe": "a stealth codec call -- security work, covert ops, hardening, sneaking past a hard problem" },
+    "kirby":      { "game": "kirby", "vibe": "cute and gentle -- low-stakes polish, docs, cosmetic/UI tweaks" },
+
+    "dave":       { "game": "dangerousdave", "clip": "oneUp",      "sprite": "walk", "vibe": "Dangerous Dave's own theme -- adventurous exploration, a new feature area" },
+    "davejump":   { "game": "dangerousdave", "clip": "jump",       "sprite": "jump", "vibe": "a jump over a gap -- a risky leap, an experimental change" },
+    "davedeath":  { "game": "dangerousdave", "clip": "death", "vibe": "Dave's death sound -- a crash, a failed attempt, back to the start" },
+    "davewin":    { "game": "dangerousdave", "clip": "next_level", "sprite": "walk", "vibe": "end-of-stage fanfare -- a feature or milestone completed cleanly" },
+    "davewalk":   { "game": "dangerousdave", "clip": "walk",       "sprite": "walk", "vibe": "ordinary footsteps -- routine, everyday incremental work" }
   },
 
   "states": {
