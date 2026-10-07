@@ -25,7 +25,7 @@ const HELP: &str = "Herdr Alert — alerts for your coding agents.
 Usage: herdr-alert COMMAND [OPTIONS]
 
 Commands:
-  configure             Full-screen interactive configuration
+  tui                   Full-screen interactive configuration
   auto [blocked|done]   Ask the LLM to pick a sound fitting this project's current
                         branch/commits; cached per project+branch. Needs the claude CLI.
   auto set blocked|done NAME  Record a pick yourself, no LLM call
@@ -617,7 +617,7 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             }
             preview(&root, name, flash)
         }
-        "configure" if args.len() == 1 => tui::run(&root),
+        "tui" if args.len() == 1 => tui::run(&root),
         "auto" if args.len() == 4 && args[1] == "set" => auto::set(&root, &args[2], &args[3]),
         "auto" if args.len() == 2 && args[1] == "show" => auto::show(&root),
         "auto" if args.len() <= 2 => auto::run(&root, args.get(1).map(String::as_str)),

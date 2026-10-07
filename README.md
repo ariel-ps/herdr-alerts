@@ -120,7 +120,7 @@ controls visibility of both normal sprites and custom animations.
 
 | Command | What it does |
 | --- | --- |
-| `herdr-alert configure` | Full-screen interactive configuration (alerts, settings, downloads, status) |
+| `herdr-alert tui` | Full-screen interactive configuration (alerts, settings, downloads, status) |
 | `herdr-alert play [NAME]` | Preview sound, flash, and sprite using your saved settings |
 | `herdr-alert list [PACK]` | Browse sounds and see which are ready, optionally one pack at a time |
 | `herdr-alert download [PACK ...]` | Download sounds and available sprites; omit PACK for all packs |

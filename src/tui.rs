@@ -1,4 +1,4 @@
-// Full-screen interactive configuration (`herdr-alert configure`). Reuses the
+// Full-screen interactive configuration (`herdr-alert tui`). Reuses the
 // same Catalog, settings::Config, and preview() the CLI commands use, so
 // anything changed here is readable and settable through the flag-based
 // commands too -- this is a second way in, not a second source of truth.
