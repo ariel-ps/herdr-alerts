@@ -178,7 +178,7 @@ impl Catalog {
         }
         Ok(files[rand::rng().random_range(0..files.len())].clone())
     }
-    fn list(&self, filter: Option<&str>) -> Result<()> {
+    fn list(&self, filter: Option<&str>, config: Option<&settings::Config>) -> Result<()> {
         if let Some(game) = filter {
             let known = self.data["games"]
                 .as_object()
@@ -191,6 +191,25 @@ impl Catalog {
             }
         }
         println!("{:<12} {:<10} {:<10} CLIP", "SOUND", "PACK", "STATUS");
+        // Auto-detected: shown whenever a custom animation has been imported
+        // (`set animation FILE`), regardless of filter -- it applies to every
+        // blocked-event preview globally when enabled, not to one named alert.
+        if filter.is_none() {
+            if let Some(path) = config.map(|c| c.get("HERDR_ALERT_ANIMATION")).filter(|p| !p.is_empty()) {
+                let enabled = matches!(config.unwrap().get("HERDR_ALERT_ANIMATION_ENABLED"), "" | "1");
+                let status = if !Path::new(path).is_file() {
+                    "missing"
+                } else if enabled {
+                    "ready (on)"
+                } else {
+                    "ready (off)"
+                };
+                println!(
+                    "{:<12} {:<10} {:<10} set animation on|off to toggle",
+                    "(custom)", "custom", status
+                );
+            }
+        }
         let alerts = self.data["alerts"]
             .as_object()
             .ok_or_else(|| failure("invalid alert catalog"))?;
@@ -621,7 +640,8 @@ fn execute(mut args: Vec<String>) -> Result<()> {
         "auto" if args.len() == 4 && args[1] == "set" => auto::set(&root, &args[2], &args[3]),
         "auto" if args.len() == 2 && args[1] == "show" => auto::show(&root),
         "auto" if args.len() <= 2 => auto::run(&root, args.get(1).map(String::as_str)),
-        "list" if args.len() <= 2 => Catalog::load(&root)?.list(args.get(1).map(String::as_str)),
+        "list" if args.len() <= 2 => Catalog::load(&root)?
+            .list(args.get(1).map(String::as_str), settings::Config::load(&root).ok().as_ref()),
         "status" if args.len() == 1 => status(
             &root,
             &Catalog::load(&root)?,

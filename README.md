@@ -116,6 +116,8 @@ use normal sprites while keeping your scene saved, and `herdr-alert set animatio
 to restore it. Custom animations are enabled by default. Sprite on/off still
 controls visibility of both normal sprites and custom animations.
 
+Once imported, it shows up as a `(custom animation)` row in `herdr-alert list` and at the top of the `tui`'s Alerts tab — it isn't a catalog entry, so it never shows up as the `blocked`/`done` *sound*, but its STATUS/CLIP columns report whether the file is still present and whether it's currently on or off, and pressing `b`/`d`/`B`/`D` on that row toggles it instead of assigning it as a sound.
+
 ## Commands
 
 | Command | What it does |

@@ -47,7 +47,15 @@ struct AlertRow {
     game: String,
     clip: String,
     ready: bool,
+    /// The pinned "(custom)" row representing an imported `set animation
+    /// FILE` scene -- not a catalog entry, so b/d (assign to blocked/done)
+    /// don't apply to it; it already applies globally whenever enabled.
+    custom_animation: bool,
 }
+
+/// The special sentinel name for the pinned custom-animation row, so
+/// selection/key handling can recognize it without a real catalog lookup.
+const CUSTOM_ANIMATION: &str = "(custom animation)";
 
 /// Which alert name actually plays for an event right now: a project
 /// override, else the saved global name, else the catalog's bundled
@@ -188,6 +196,7 @@ impl App {
 
     fn reload(&mut self) -> Result<()> {
         let catalog = Catalog::load(&self.root)?;
+        let config = self.config().ok();
         let alerts_obj = catalog.data["alerts"]
             .as_object()
             .ok_or_else(|| failure("invalid alert catalog"))?;
@@ -199,13 +208,33 @@ impl App {
                     game: game.to_string(),
                     clip: clip.to_string(),
                     ready: catalog.resolve(name).is_ok(),
+                    custom_animation: false,
                 });
             }
         }
         rows.sort_by(|a, b| a.name.cmp(&b.name));
+        // Auto-detected: pinned first whenever a custom animation has been
+        // imported (`set animation FILE`), regardless of pack filter -- it
+        // applies to every blocked-event preview globally when enabled, not
+        // to one named catalog alert.
+        let animation_path = config.as_ref().map(|c| c.get("HERDR_ALERT_ANIMATION")).unwrap_or("");
+        if !animation_path.is_empty() {
+            let enabled = config
+                .as_ref()
+                .is_some_and(|c| matches!(c.get("HERDR_ALERT_ANIMATION_ENABLED"), "" | "1"));
+            rows.insert(
+                0,
+                AlertRow {
+                    name: CUSTOM_ANIMATION.into(),
+                    game: "custom".into(),
+                    clip: if enabled { "on".into() } else { "off".into() },
+                    ready: Path::new(animation_path).is_file(),
+                    custom_animation: true,
+                },
+            );
+        }
         self.alerts = rows;
 
-        let config = self.config().ok();
         let global_blocked = config.as_ref().map(|c| c.get("HERDR_ALERT_BLOCKED")).unwrap_or("");
         let global_done = config.as_ref().map(|c| c.get("HERDR_ALERT_DONE")).unwrap_or("");
         let default_blocked = catalog.data["states"]["blocked"].as_str().unwrap_or("");
@@ -411,6 +440,27 @@ fn handle_alerts_key(terminal: &mut Term, app: &mut App, key: KeyCode) -> Result
     let Some(name) = app.selected_alert().map(|a| a.name.clone()) else {
         return Ok(());
     };
+    if name == CUSTOM_ANIMATION {
+        match key {
+            KeyCode::Char('/') => app.filtering = true,
+            KeyCode::Enter => {
+                suspend(terminal, || preview(&app.root, None, false))?;
+            }
+            KeyCode::Char('b') | KeyCode::Char('d') | KeyCode::Char('B') | KeyCode::Char('D') => {
+                let enabled = app
+                    .config()
+                    .is_ok_and(|c| matches!(c.get("HERDR_ALERT_ANIMATION_ENABLED"), "" | "1"));
+                settings::save(
+                    &app.root,
+                    &[("HERDR_ALERT_ANIMATION_ENABLED".into(), if enabled { "0" } else { "1" }.into())],
+                )?;
+                app.reload()?;
+                app.message = format!("Custom animation {}.", if enabled { "disabled" } else { "enabled" });
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
     match key {
         KeyCode::Char('/') => app.filtering = true,
         KeyCode::Enter => {
@@ -539,7 +589,7 @@ fn draw(frame: &mut Frame, app: &App) {
 fn draw_tabs(frame: &mut Frame, area: Rect, active: Tab) {
     let titles: Vec<Line> = TABS.iter().map(|t| Line::from(t.title())).collect();
     let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::ALL).title("Herdr Alert — configure"))
+        .block(Block::default().borders(Borders::ALL).title("Herdr Alert — tui"))
         .select(TABS.iter().position(|t| *t == active).unwrap_or(0))
         .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan));
     frame.render_widget(tabs, area);
@@ -549,6 +599,9 @@ fn draw_statusline(frame: &mut Frame, area: Rect, app: &App) {
     let hint = match app.tab {
         Tab::Alerts if app.filtering => {
             format!("Filter by pack: {}_  (Enter/Esc to stop)", app.pack_filter)
+        }
+        Tab::Alerts if app.selected_alert().is_some_and(|a| a.name == CUSTOM_ANIMATION) => {
+            "Enter preview  b/d/B/D toggle on/off  / filter".to_string()
         }
         Tab::Alerts => "Enter preview  b/d set blocked/done sound  B/D set blocked/done sprite  / filter"
             .to_string(),
@@ -583,11 +636,17 @@ fn draw_alerts(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default()
             };
             let mut active = Vec::new();
-            if a.name == app.active_blocked {
-                active.push("BLOCKED");
-            }
-            if a.name == app.active_done {
-                active.push("DONE");
+            if a.custom_animation {
+                if a.clip == "on" {
+                    active.push("ENABLED");
+                }
+            } else {
+                if a.name == app.active_blocked {
+                    active.push("BLOCKED");
+                }
+                if a.name == app.active_done {
+                    active.push("DONE");
+                }
             }
             let active_cell = if active.is_empty() {
                 Cell::from("")
