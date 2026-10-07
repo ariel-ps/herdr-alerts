@@ -49,6 +49,17 @@ struct AlertRow {
     ready: bool,
 }
 
+/// Which alert name actually plays for an event right now: a project
+/// override, else the saved global name, else the catalog's bundled
+/// default -- same precedence the real hook applies.
+fn effective_alert(project_pick: Option<&String>, global: &str, default: &str) -> String {
+    project_pick
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .or_else(|| (!global.is_empty()).then(|| global.to_string()))
+        .unwrap_or_else(|| default.to_string())
+}
+
 struct GameRow {
     name: String,
     sounds_ready: bool,
@@ -141,6 +152,11 @@ struct App {
     /// TUI was launched from, if any -- computed once, since that cwd can't
     /// change over the TUI's own lifetime.
     project: Option<auto::ProjectStatus>,
+    /// The alert name that actually plays for each event right now (project
+    /// override, else the saved global name, else the catalog default) --
+    /// recomputed in reload() so the Alerts table can mark the active rows.
+    active_blocked: String,
+    active_done: String,
 }
 
 impl App {
@@ -159,6 +175,8 @@ impl App {
             message: "Tab/Shift+Tab or 1-4 to switch panes. q to quit.".into(),
             quit: false,
             project: env::current_dir().ok().and_then(|cwd| auto::lookup(&cwd)),
+            active_blocked: String::new(),
+            active_done: String::new(),
         };
         app.reload()?;
         Ok(app)
@@ -186,6 +204,22 @@ impl App {
         }
         rows.sort_by(|a, b| a.name.cmp(&b.name));
         self.alerts = rows;
+
+        let config = self.config().ok();
+        let global_blocked = config.as_ref().map(|c| c.get("HERDR_ALERT_BLOCKED")).unwrap_or("");
+        let global_done = config.as_ref().map(|c| c.get("HERDR_ALERT_DONE")).unwrap_or("");
+        let default_blocked = catalog.data["states"]["blocked"].as_str().unwrap_or("");
+        let default_done = catalog.data["states"]["done"].as_str().unwrap_or("");
+        self.active_blocked = effective_alert(
+            self.project.as_ref().and_then(|p| p.blocked.as_ref()),
+            global_blocked,
+            default_blocked,
+        );
+        self.active_done = effective_alert(
+            self.project.as_ref().and_then(|p| p.done.as_ref()),
+            global_done,
+            default_done,
+        );
 
         let games_obj = catalog.data["games"]
             .as_object()
@@ -390,6 +424,7 @@ fn handle_alerts_key(terminal: &mut Term, app: &mut App, key: KeyCode) -> Result
                     ("HERDR_SOUND_BLOCKED".into(), String::new()),
                 ],
             )?;
+            app.reload()?;
             app.message = format!("Blocked sound set to {name}.");
         }
         KeyCode::Char('d') => {
@@ -400,6 +435,7 @@ fn handle_alerts_key(terminal: &mut Term, app: &mut App, key: KeyCode) -> Result
                     ("HERDR_SOUND_DONE".into(), String::new()),
                 ],
             )?;
+            app.reload()?;
             app.message = format!("Done sound set to {name}.");
         }
         KeyCode::Char('B') | KeyCode::Char('D') => {
@@ -546,11 +582,24 @@ fn draw_alerts(frame: &mut Frame, area: Rect, app: &App) {
             } else {
                 Style::default()
             };
+            let mut active = Vec::new();
+            if a.name == app.active_blocked {
+                active.push("BLOCKED");
+            }
+            if a.name == app.active_done {
+                active.push("DONE");
+            }
+            let active_cell = if active.is_empty() {
+                Cell::from("")
+            } else {
+                Cell::from(active.join("+")).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            };
             Row::new(vec![
                 Cell::from(a.name.clone()),
                 Cell::from(a.game.clone()),
                 Cell::from(if a.ready { "ready" } else { "missing" }),
                 Cell::from(if a.clip.is_empty() { "(any)".into() } else { a.clip.clone() }),
+                active_cell,
             ])
             .style(style)
         })
@@ -561,10 +610,14 @@ fn draw_alerts(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(14),
             Constraint::Length(14),
             Constraint::Length(10),
-            Constraint::Min(10),
+            Constraint::Length(20),
+            Constraint::Min(14),
         ],
     )
-    .header(Row::new(["SOUND", "PACK", "STATUS", "CLIP"]).style(Style::default().add_modifier(Modifier::BOLD)))
+    .header(
+        Row::new(["SOUND", "PACK", "STATUS", "CLIP", "ACTIVE"])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+    )
     .block(Block::default().borders(Borders::ALL));
     frame.render_widget(table, area);
 }
