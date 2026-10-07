@@ -33,6 +33,10 @@
 #   HERDR_ALERT_MAX_SECONDS     cap a clip, default 3, empty plays it in full
 #   HERDR_SPRITE_BLOCKED=<game>:<sprite>  show a different alert's sprite
 #   HERDR_SPRITE_DONE=<game>:<sprite>     instead of the sound alert's own
+#   HERDR_SPRITE_BLOCKED=custom           show the imported custom animation
+#   HERDR_SPRITE_DONE=custom              instead -- a category of sprite,
+#                                         selected the same way as any other,
+#                                         not a separate on/off switch
 #   SPRITE_NAME=<name>          override the sprite the alert chose
 #
 # `herdr-alert auto` LLM-picks a name per project+branch from its branch and
@@ -152,13 +156,21 @@ if [[ -r "$projects_file" && -n "$pane" && "$pane" != *[^a-zA-Z0-9_:-]* ]]; then
   fi
 fi
 
-# "<game>:<sprite>" picked by `set blocked-sprite|done-sprite`; herdr-visuals
-# re-checks it is actually downloaded and falls back to the sound alert's own
-# sprite (or none) otherwise, same degrade-one-step philosophy as everywhere
-# else here.
-sprite_game_pick="${sprite_pick%%:*}"
-sprite_name_pick="${sprite_pick#*:}"
-[[ "$sprite_pick" == *:* ]] || { sprite_game_pick=; sprite_name_pick=; }
+# "custom" picked by `set blocked-sprite|done-sprite custom` (or the
+# `set animation on` alias) selects the imported scene for this event only --
+# a category of sprite, not a separate master switch. "<game>:<sprite>" picks
+# a different alert's own sprite the same way. herdr-visuals re-checks either
+# is actually available and falls back to the sound alert's own sprite (or
+# none) otherwise, same degrade-one-step philosophy as everywhere else here.
+sprite_file_pick= sprite_fullscreen_pick=
+sprite_game_pick= sprite_name_pick=
+if [[ "$sprite_pick" == custom ]]; then
+  sprite_file_pick="${HERDR_ALERT_ANIMATION:-}"
+  sprite_fullscreen_pick=1
+elif [[ "$sprite_pick" == *:* ]]; then
+  sprite_game_pick="${sprite_pick%%:*}"
+  sprite_name_pick="${sprite_pick#*:}"
+fi
 
 # A literal path is the user saying exactly what to play, so it outranks a name;
 # a name outranks the bundled clip; the bundled clip is always there.
@@ -172,8 +184,7 @@ fi
 
 # Flash first so the light and the sound land together rather than in sequence.
 if [[ -n "$pane" && "$pane" != *[^a-zA-Z0-9_:-]* ]]; then
-  export HERDR_ALERT_ANIMATION_ENABLED="${HERDR_ALERT_ANIMATION_ENABLED:-1}"
-  SPRITE_FILE="${HERDR_ALERT_ANIMATION:-}" \
+  SPRITE_FILE="$sprite_file_pick" SPRITE_FULLSCREEN="$sprite_fullscreen_pick" \
   SPRITE_GAME="${sprite_game_pick:-}" SPRITE_NAME="${SPRITE_NAME:-$sprite_name_pick}" \
   zsh "$root/libexec/herdr-visuals" "$pane" "$state" "$name" \
     "${HERDR_ALERT_FLASH:-1}" "${HERDR_ALERT_SPRITE:-1}" &!

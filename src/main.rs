@@ -36,14 +36,15 @@ Commands:
   download --sprites [PACK ...]  Download only sprite artwork
   set blocked|done NAME Choose an automatic alert sound
   set blocked-sprite|done-sprite NAME  Show a different alert's sprite instead
+  set blocked-sprite|done-sprite custom  Show the imported custom animation instead
   set blocked-sprite|done-sprite default  Use the sound's own paired sprite again
   set volume blocked|done NUMBER  Set that event's playback volume
   set duration NUMBER|full  Cap, or stop capping, clip playback length
   set flash on|off     Save the flash setting for previews and automatic alerts
   set sprite on|off    Save sprite visibility for previews and blocked alerts
-  set animation on|off  Enable or disable the saved custom animation
-  set animation FILE  Import a GIF/animated PNG for previews and blocked alerts
-  set animation default  Restore the artwork paired with each sound
+  set animation FILE  Import a GIF/animated PNG, shown full-screen when assigned
+  set animation on|off  Assign/unassign it as both blocked and done's sprite
+  set animation default  Clear the imported animation entirely
   enable / disable     Enable or mute automatic alerts
   status               Check settings and audio backend
 
@@ -192,22 +193,24 @@ impl Catalog {
         }
         println!("{:<12} {:<10} {:<10} CLIP", "SOUND", "PACK", "STATUS");
         // Auto-detected: shown whenever a custom animation has been imported
-        // (`set animation FILE`), regardless of filter -- it applies to every
-        // blocked-event preview globally when enabled, not to one named alert.
+        // (`set animation FILE`), regardless of filter. It's a category of
+        // sprite like any other -- assigned per blocked/done event via
+        // set blocked-sprite|done-sprite custom, not a separate on/off switch.
         if filter.is_none() {
             if let Some(path) = config.map(|c| c.get("HERDR_ALERT_ANIMATION")).filter(|p| !p.is_empty()) {
-                let enabled = matches!(config.unwrap().get("HERDR_ALERT_ANIMATION_ENABLED"), "" | "1");
-                let status = if !Path::new(path).is_file() {
-                    "missing"
-                } else if enabled {
-                    "ready (on)"
+                let status = if Path::new(path).is_file() { "ready" } else { "missing" };
+                let config = config.unwrap();
+                let assigned: Vec<&str> = [("blocked", "HERDR_SPRITE_BLOCKED"), ("done", "HERDR_SPRITE_DONE")]
+                    .iter()
+                    .filter(|(_, key)| config.get(key) == "custom")
+                    .map(|(event, _)| *event)
+                    .collect();
+                let clip = if assigned.is_empty() {
+                    "not assigned; set blocked-sprite|done-sprite custom".to_string()
                 } else {
-                    "ready (off)"
+                    format!("assigned: {}", assigned.join("+"))
                 };
-                println!(
-                    "{:<12} {:<10} {:<10} set animation on|off to toggle",
-                    "(custom)", "custom", status
-                );
+                println!("{:<12} {:<10} {:<10} {}", "(custom)", "custom", status, clip);
             }
         }
         let alerts = self.data["alerts"]
@@ -412,7 +415,7 @@ fn play_file(path: &Path, volume: &str, duration: &str) -> Result<()> {
     Ok(())
 }
 
-fn preview(root: &Path, name: Option<&str>, flash_flag: bool) -> Result<()> {
+fn preview(root: &Path, name: Option<&str>, flash_flag: bool, custom_scene: bool) -> Result<()> {
     let config = settings::Config::load(root)?;
     let flash = flash_flag || config.flash_enabled();
     let sprite = matches!(config.get("HERDR_ALERT_SPRITE"), "" | "1");
@@ -434,22 +437,26 @@ fn preview(root: &Path, name: Option<&str>, flash_flag: bool) -> Result<()> {
     println!("Playing {}...", name.unwrap_or("included tone"));
     let volume = config.get("HERDR_VOLUME_DONE");
     let mut visual = if flash || sprite {
-        Some(
-            Command::new("zsh")
-                .arg(root.join("libexec/herdr-visuals"))
-                .arg(&pane)
-                .arg("preview")
-                .arg(name.unwrap_or(""))
-                .arg(if flash { "1" } else { "0" })
-                .arg(if sprite { "1" } else { "0" })
+        let mut command = Command::new("zsh");
+        command
+            .arg(root.join("libexec/herdr-visuals"))
+            .arg(&pane)
+            .arg("preview")
+            .arg(name.unwrap_or(""))
+            .arg(if flash { "1" } else { "0" })
+            .arg(if sprite { "1" } else { "0" });
+        // Always set explicitly, never left to the ambient environment: an
+        // explicit request to preview the imported scene itself (the tui's
+        // "(custom animation)" row) forces it on; anything else must not
+        // inherit a stray SPRITE_FILE from whatever spawned this process.
+        if custom_scene {
+            command
                 .env("SPRITE_FILE", config.get("HERDR_ALERT_ANIMATION"))
-                .env(
-                    "HERDR_ALERT_ANIMATION_ENABLED",
-                    config.get("HERDR_ALERT_ANIMATION_ENABLED"),
-                )
-                .spawn()
-                .map_err(failure)?,
-        )
+                .env("SPRITE_FULLSCREEN", "1");
+        } else {
+            command.env("SPRITE_FILE", "").env("SPRITE_FULLSCREEN", "");
+        }
+        Some(command.spawn().map_err(failure)?)
     } else {
         None
     };
@@ -491,15 +498,6 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
     );
     let duration = config.get("HERDR_ALERT_MAX_SECONDS");
     let animation = config.get("HERDR_ALERT_ANIMATION");
-    println!(
-        "  {:<18} {} (custom artwork; sprites must also be on)",
-        "Animation",
-        if matches!(config.get("HERDR_ALERT_ANIMATION_ENABLED"), "" | "1") {
-            "on"
-        } else {
-            "off"
-        }
-    );
     if !animation.is_empty() {
         println!(
             "  {:<18} {}{}",
@@ -511,6 +509,7 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
                 " (missing; using fallback)"
             }
         );
+        println!("  {:<18} assign with set blocked-sprite|done-sprite custom (see below)", "");
     }
     println!(
         "  {:<18} {} (previews and blocked-agent alerts)",
@@ -562,7 +561,9 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
         };
         println!("  {event:<10} {volume:<8} {name} ({availability})");
         let sprite_override = config.get(&format!("HERDR_SPRITE_{upper}"));
-        if !sprite_override.is_empty() {
+        if sprite_override == "custom" {
+            println!("             sprite override: custom animation");
+        } else if !sprite_override.is_empty() {
             println!("             sprite override: {sprite_override}");
         }
         let project_pick = project.as_ref().and_then(|p| {
@@ -634,7 +635,7 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                     return Err(usage("usage: herdr-alert play [NAME] [--flash]"));
                 }
             }
-            preview(&root, name, flash)
+            preview(&root, name, flash, false)
         }
         "tui" if args.len() == 1 => tui::run(&root),
         "auto" if args.len() == 4 && args[1] == "set" => auto::set(&root, &args[2], &args[3]),
@@ -709,12 +710,47 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                 path
             };
             settings::save(&root, &[("HERDR_ALERT_ANIMATION".into(), animation)])?;
-            println!("Animation updated. Preview: herdr-alert play\nEnable it with: herdr-alert set animation on\nSprites must be enabled: herdr-alert set sprite on");
+            println!("Animation updated. Preview: herdr-alert play\nAssign it with: herdr-alert set animation on\nSprites must be enabled: herdr-alert set sprite on");
             Ok(())
         }
-        "set"
-            if args.len() == 3 && ["flash", "sprite", "animation"].contains(&args[1].as_str()) =>
+        // Convenience alias over the real mechanism: the custom animation is a
+        // category of sprite like any other (see set blocked-sprite/done-sprite
+        // custom below), not a separate master switch. This just assigns or
+        // clears "custom" on both events at once instead of one at a time.
+        "set" if args.len() == 3 && args[1] == "animation" && ["on", "off"].contains(&args[2].as_str()) =>
         {
+            if args[2] == "on" {
+                let animation = settings::Config::load(&root)?.get("HERDR_ALERT_ANIMATION").to_string();
+                if animation.is_empty() {
+                    return Err(usage(
+                        "No animation imported yet. Run herdr-alert set animation FILE first.",
+                    ));
+                }
+                settings::save(
+                    &root,
+                    &[
+                        ("HERDR_SPRITE_BLOCKED".into(), "custom".into()),
+                        ("HERDR_SPRITE_DONE".into(), "custom".into()),
+                    ],
+                )?;
+                println!("Custom animation assigned as blocked and done's sprite.");
+            } else {
+                // Only clear slots actually pointing at it, so this never
+                // clobbers an unrelated blocked-sprite/done-sprite choice.
+                let config = settings::Config::load(&root)?;
+                let mut updates = Vec::new();
+                if config.get("HERDR_SPRITE_BLOCKED") == "custom" {
+                    updates.push(("HERDR_SPRITE_BLOCKED".into(), String::new()));
+                }
+                if config.get("HERDR_SPRITE_DONE") == "custom" {
+                    updates.push(("HERDR_SPRITE_DONE".into(), String::new()));
+                }
+                settings::save(&root, &updates)?;
+                println!("Custom animation unassigned; sprites revert to each sound's own.");
+            }
+            Ok(())
+        }
+        "set" if args.len() == 3 && ["flash", "sprite"].contains(&args[1].as_str()) => {
             let value = match args[2].as_str() {
                 "on" => "1",
                 "off" => "0",
@@ -722,21 +758,9 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             };
             settings::save(
                 &root,
-                &[(
-                    if args[1] == "animation" {
-                        "HERDR_ALERT_ANIMATION_ENABLED".into()
-                    } else {
-                        format!("HERDR_ALERT_{}", args[1].to_uppercase())
-                    },
-                    value.into(),
-                )],
+                &[(format!("HERDR_ALERT_{}", args[1].to_uppercase()), value.into())],
             )?;
-            if args[1] == "animation" {
-                println!(
-                    "Animation {} (custom artwork; sprites must also be on).",
-                    args[2]
-                );
-            } else if args[1] == "sprite" {
+            if args[1] == "sprite" {
                 println!("Sprite {} (previews and blocked-agent alerts).", args[2]);
             } else {
                 println!("Flash {} (previews and automatic alerts).", args[2]);
@@ -770,16 +794,31 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             let event = args[1].trim_end_matches("-sprite").to_uppercase();
             let value = if args[2] == "default" {
                 String::new()
+            } else if args[2] == "custom" {
+                let animation = settings::Config::load(&root)?.get("HERDR_ALERT_ANIMATION").to_string();
+                if animation.is_empty() {
+                    return Err(usage(
+                        "No animation imported yet. Run herdr-alert set animation FILE first.",
+                    ));
+                }
+                "custom".to_string()
             } else {
                 let catalog = Catalog::load(&root)?;
                 let (game, sprite) = catalog.alert_sprite(&args[2])?;
                 format!("{game}:{sprite}")
             };
             settings::save(&root, &[(format!("HERDR_SPRITE_{event}"), value)])?;
-            println!(
-                "{} now shows {}'s sprite.\nPreview the paired sound separately: herdr-alert play {}",
-                args[1], args[2], args[2]
-            );
+            if args[2] == "custom" {
+                println!(
+                    "{} now shows the imported custom animation.\nPreview: herdr-alert play",
+                    args[1]
+                );
+            } else {
+                println!(
+                    "{} now shows {}'s sprite.\nPreview the paired sound separately: herdr-alert play {}",
+                    args[1], args[2], args[2]
+                );
+            }
             Ok(())
         }
         "set" if args.len() == 4 && args[1] == "volume" && ["blocked", "done"].contains(&args[2].as_str()) =>

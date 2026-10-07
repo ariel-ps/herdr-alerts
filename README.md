@@ -96,11 +96,21 @@ jumping over an obstacle:
 ```sh
 herdr-alert set animation ./jump-scene.gif
 herdr-alert set sprite on
-herdr-alert set animation on
+herdr-alert set blocked-sprite custom   # Show it for needs-attention alerts
+herdr-alert set done-sprite custom      # ...and/or for finished alerts
 herdr-alert play
-herdr-alert set animation off      # Use normal sprites; keep the imported scene saved
-herdr-alert set animation default  # Return to each sound's paired artwork
+herdr-alert set blocked-sprite default  # Back to that sound's own paired artwork
+herdr-alert set animation default       # Clear the imported scene entirely
 ```
+
+The custom animation is a **category of sprite**, selected the same way as any
+named alert's own artwork — assigned per event with `set blocked-sprite`/
+`set done-sprite custom`, not a separate master on/off switch. `set animation
+on|off` is a shorthand that assigns or clears `custom` on both events at once.
+Once imported, it shows up as a `(custom animation)` row in `herdr-alert list`
+and at the top of the `tui`'s Alerts tab; pressing `B`/`D` there does the same
+assignment. Because it isn't a catalog entry, `b`/`d` (which assign a *sound*)
+don't apply to it.
 
 Import requires `uv` and uses Pillow, the same image library used by sprite
 downloads. The scene is copied into the user data directory and converted once;
@@ -108,15 +118,16 @@ the original file is no longer needed. Import preserves frame timing, transparen
 and aspect ratio. Scenes may contain up to 600 frames, measure up to 512×512 pixels,
 last up to 30 seconds per cycle, and occupy up to 64 MiB when decoded.
 
+Assigned as a sprite, it renders **full-screen** — scaled to fill most of the
+pane and centered, rather than tucked into the small top-right corner catalog
+sprites use — since a custom scene is meant to be seen, not just glanced at.
 A focused pane plays the whole scene once. An unfocused pane loops it without a
 pause between cycles and clears it when you return. Sound plays once per alert.
 Custom scenes apply to previews and needs-attention alerts; finished alerts keep
-their existing sound and flash behavior. Use `herdr-alert set animation off` to
-use normal sprites while keeping your scene saved, and `herdr-alert set animation on`
-to restore it. Custom animations are enabled by default. Sprite on/off still
-controls visibility of both normal sprites and custom animations.
-
-Once imported, it shows up as a `(custom animation)` row in `herdr-alert list` and at the top of the `tui`'s Alerts tab — it isn't a catalog entry, so it never shows up as the `blocked`/`done` *sound*, but its STATUS/CLIP columns report whether the file is still present and whether it's currently on or off, and pressing `b`/`d`/`B`/`D` on that row toggles it instead of assigning it as a sound.
+their existing sound and flash behavior (sprites, custom or not, never show on
+a finished alert). A bare `herdr-alert play` (no NAME) never shows the custom
+scene on its own, since it isn't previewing any specific event — preview it
+directly via the `tui`'s `(custom animation)` row instead.
 
 ## Commands
 
@@ -133,14 +144,15 @@ Once imported, it shows up as a `(custom animation)` row in `herdr-alert list` a
 | `herdr-alert set blocked NAME` | Choose the needs-attention sound |
 | `herdr-alert set done NAME` | Choose the finished sound |
 | `herdr-alert set blocked-sprite\|done-sprite NAME` | Show a different alert's sprite instead of the sound's own |
+| `herdr-alert set blocked-sprite\|done-sprite custom` | Show the imported custom animation instead, full-screen |
 | `herdr-alert set blocked-sprite\|done-sprite default` | Use the sound alert's own sprite again |
 | `herdr-alert set volume blocked\|done NUMBER` | Set that event's playback volume |
 | `herdr-alert set duration NUMBER\|full` | Cap, or stop capping, clip playback length |
 | `herdr-alert set flash on\|off` | Save the flash preference for previews and automatic alerts |
 | `herdr-alert set sprite on\|off` | Save the sprite preference for previews and blocked-agent alerts |
-| `herdr-alert set animation on\|off` | Enable or disable custom artwork without clearing the imported scene |
-| `herdr-alert set animation FILE` | Import a GIF or animated PNG for previews and needs-attention alerts |
-| `herdr-alert set animation default` | Restore the artwork paired with each sound |
+| `herdr-alert set animation FILE` | Import a GIF or animated PNG, shown full-screen when assigned |
+| `herdr-alert set animation on\|off` | Assign/unassign it as both blocked and done's sprite at once |
+| `herdr-alert set animation default` | Clear the imported animation entirely |
 | `herdr-alert enable` | Enable automatic alerts |
 | `herdr-alert disable` | Mute automatic alerts; manual previews still work |
 | `herdr-alert status` | Show settings, sound availability, and audio backend |

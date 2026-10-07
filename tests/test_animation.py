@@ -172,9 +172,14 @@ def check():
         assert imported.read_bytes() == raw
         assert str(imported).encode() in saved
         source.unlink()  # Playback must not depend on the original input file.
+        # A bare preview (no NAME) isn't previewing any specific event, so it
+        # never forces the custom scene on its own -- that would be the old
+        # blanket-override behavior; the scene is now a category of sprite,
+        # assigned per event.
         cli('play')
-        assert (home / 'visual').read_text().strip() == str(imported)
+        assert (home / 'visual').read_text().strip() == ''
         (home / 'visual').unlink()
+        cli('set', 'animation', 'on')
         subprocess.run(['zsh', str(ROOT / 'hooks/on-pane-agent-status-changed-alert.zsh')],
                        env={**env, 'HERDR_PLUGIN_EVENT_JSON': json.dumps({
                            'data': {'pane_id': 'w1:p1', 'agent_status': 'blocked'}})}, check=True)
@@ -182,6 +187,7 @@ def check():
         while (not (home / 'visual').exists() or not (home / 'visual').read_text()) and time.monotonic() < deadline:
             time.sleep(.01)
         assert (home / 'visual').read_text().strip() == str(imported)
+        saved = config.read_bytes()  # Refresh: 'set animation on' above changed it.
         broken = home / 'bad.gif'
         broken.write_bytes(b'invalid')
         cli('set', 'animation', str(broken), ok=False)

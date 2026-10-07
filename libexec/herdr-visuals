@@ -20,7 +20,6 @@ if [[ "$flash" == 1 ]]; then
   zsh "$root/libexec/herdr-flash" "$pane" "$flash_state" || result=$?
 fi
 [[ "$sprite" == 1 && "$state" != done ]] || exit "$result"
-[[ "${HERDR_ALERT_ANIMATION_ENABLED:-1}" == 1 ]] || export SPRITE_FILE=''
 
 terminal=/dev/tty
 if [[ -n "$pane" ]]; then
@@ -33,11 +32,14 @@ if [[ -n "$pane" ]]; then
   fi
   terminal="/dev/$tty"
 fi
-cols=$(stty size < "$terminal" 2>/dev/null | awk '{print $2}')
+size=($(stty size < "$terminal" 2>/dev/null))
+rows=${size[1]:-}
+cols=${size[2]:-}
 if [[ "$cols" != <1-> ]]; then
   print -u2 -- 'herdr-alert: sprites need an interactive terminal; use set sprite off for audio-only jobs.'
   exit 1
 fi
+[[ "$rows" == <1-> ]] && export SPRITE_ROWS="$rows"
 
 export SPRITE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit/sprites"
 export SPRITE_PANE_ID="$pane"
@@ -50,11 +52,19 @@ if [[ -n "${SPRITE_GAME:-}" && -n "${SPRITE_NAME:-}" ]] \
   unset SPRITE_GAME SPRITE_NAME
 fi
 
+# The imported custom scene (set by the caller only when that event's sprite
+# selection is literally "custom" -- see the hook script) degrades the same
+# way: a selection pointing at a scene that got deleted falls through to the
+# catalog sprite logic below instead of drawing nothing.
+if [[ -n "${SPRITE_FILE:-}" ]] && ! [[ -r "$SPRITE_FILE" ]]; then
+  unset SPRITE_FILE SPRITE_FULLSCREEN
+fi
+
 [[ -r "$root/generated/alerts.zsh" ]] && source "$root/generated/alerts.zsh"
 if typeset -f __herdr_alert_spec >/dev/null && __herdr_alert_spec "$name"; then
-  [[ -z "${SPRITE_GAME:-}" ]] && export SPRITE_GAME="$alert_game"
-  [[ -z "${SPRITE_NAME:-}" && -n "$alert_sprite" && -r "$SPRITE_DIR/$alert_game/$alert_sprite.rgba" ]] \
-    && export SPRITE_NAME="$alert_sprite"
+  [[ -z "${SPRITE_GAME:-}" && -z "${SPRITE_FILE:-}" ]] && export SPRITE_GAME="$alert_game"
+  [[ -z "${SPRITE_NAME:-}" && -z "${SPRITE_FILE:-}" && -n "$alert_sprite" \
+     && -r "$SPRITE_DIR/$alert_game/$alert_sprite.rgba" ]] && export SPRITE_NAME="$alert_sprite"
 fi
 perl "$root/vendor/sprite/sprite.pl" "$terminal" "$cols" || exit $?
 exit "$result"

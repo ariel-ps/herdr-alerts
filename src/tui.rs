@@ -47,9 +47,12 @@ struct AlertRow {
     game: String,
     clip: String,
     ready: bool,
+    /// The alert's own sprite name, if it has one -- used to tell whether a
+    /// HERDR_SPRITE_{EVENT} override currently points at this exact row.
+    sprite: Option<String>,
     /// The pinned "(custom)" row representing an imported `set animation
-    /// FILE` scene -- not a catalog entry, so b/d (assign to blocked/done)
-    /// don't apply to it; it already applies globally whenever enabled.
+    /// FILE` scene -- not a catalog entry, so b/d (assign sound) don't apply;
+    /// B/D assign it as that event's sprite, same mechanism as any other row.
     custom_animation: bool,
 }
 
@@ -80,16 +83,14 @@ enum SettingItem {
     Enabled,
     Flash,
     Sprite,
-    Animation,
     VolumeBlocked,
     VolumeDone,
     Duration,
 }
-const SETTINGS: [SettingItem; 7] = [
+const SETTINGS: [SettingItem; 6] = [
     SettingItem::Enabled,
     SettingItem::Flash,
     SettingItem::Sprite,
-    SettingItem::Animation,
     SettingItem::VolumeBlocked,
     SettingItem::VolumeDone,
     SettingItem::Duration,
@@ -100,7 +101,6 @@ impl SettingItem {
             SettingItem::Enabled => "Automatic alerts",
             SettingItem::Flash => "Flash",
             SettingItem::Sprite => "Sprite",
-            SettingItem::Animation => "Animation",
             SettingItem::VolumeBlocked => "Blocked volume",
             SettingItem::VolumeDone => "Done volume",
             SettingItem::Duration => "Duration limit",
@@ -117,7 +117,6 @@ impl SettingItem {
             SettingItem::Enabled => "HERDR_ALERT_OFF",
             SettingItem::Flash => "HERDR_ALERT_FLASH",
             SettingItem::Sprite => "HERDR_ALERT_SPRITE",
-            SettingItem::Animation => "HERDR_ALERT_ANIMATION_ENABLED",
             SettingItem::VolumeBlocked => "HERDR_VOLUME_BLOCKED",
             SettingItem::VolumeDone => "HERDR_VOLUME_DONE",
             SettingItem::Duration => "HERDR_ALERT_MAX_SECONDS",
@@ -127,7 +126,7 @@ impl SettingItem {
         let raw = config.get(self.key());
         match self {
             SettingItem::Enabled => if raw == "1" { "disabled" } else { "enabled" }.into(),
-            SettingItem::Flash | SettingItem::Sprite | SettingItem::Animation => {
+            SettingItem::Flash | SettingItem::Sprite => {
                 if matches!(raw, "" | "1") { "on" } else { "off" }.into()
             }
             SettingItem::VolumeBlocked => if raw.is_empty() { "1.8" } else { raw }.into(),
@@ -165,6 +164,10 @@ struct App {
     /// recomputed in reload() so the Alerts table can mark the active rows.
     active_blocked: String,
     active_done: String,
+    /// Raw HERDR_SPRITE_BLOCKED/DONE values ("", "custom", or "game:sprite")
+    /// -- which sprite is active per event, independent of the sound choice.
+    active_sprite_blocked: String,
+    active_sprite_done: String,
 }
 
 impl App {
@@ -185,6 +188,8 @@ impl App {
             project: env::current_dir().ok().and_then(|cwd| auto::lookup(&cwd)),
             active_blocked: String::new(),
             active_done: String::new(),
+            active_sprite_blocked: String::new(),
+            active_sprite_done: String::new(),
         };
         app.reload()?;
         Ok(app)
@@ -208,32 +213,36 @@ impl App {
                     game: game.to_string(),
                     clip: clip.to_string(),
                     ready: catalog.resolve(name).is_ok(),
+                    sprite: catalog.alert_sprite(name).ok().map(|(_, sprite)| sprite.to_string()),
                     custom_animation: false,
                 });
             }
         }
         rows.sort_by(|a, b| a.name.cmp(&b.name));
         // Auto-detected: pinned first whenever a custom animation has been
-        // imported (`set animation FILE`), regardless of pack filter -- it
-        // applies to every blocked-event preview globally when enabled, not
-        // to one named catalog alert.
+        // imported (`set animation FILE`), regardless of pack filter. It's a
+        // category of sprite like any other -- selected via set blocked-sprite/
+        // done-sprite custom (or the Alerts tab's B/D on this row), not a
+        // separate master switch.
         let animation_path = config.as_ref().map(|c| c.get("HERDR_ALERT_ANIMATION")).unwrap_or("");
         if !animation_path.is_empty() {
-            let enabled = config
-                .as_ref()
-                .is_some_and(|c| matches!(c.get("HERDR_ALERT_ANIMATION_ENABLED"), "" | "1"));
             rows.insert(
                 0,
                 AlertRow {
                     name: CUSTOM_ANIMATION.into(),
                     game: "custom".into(),
-                    clip: if enabled { "on".into() } else { "off".into() },
+                    clip: String::new(),
                     ready: Path::new(animation_path).is_file(),
+                    sprite: None,
                     custom_animation: true,
                 },
             );
         }
         self.alerts = rows;
+        self.active_sprite_blocked =
+            config.as_ref().map(|c| c.get("HERDR_SPRITE_BLOCKED").to_string()).unwrap_or_default();
+        self.active_sprite_done =
+            config.as_ref().map(|c| c.get("HERDR_SPRITE_DONE").to_string()).unwrap_or_default();
 
         let global_blocked = config.as_ref().map(|c| c.get("HERDR_ALERT_BLOCKED")).unwrap_or("");
         let global_done = config.as_ref().map(|c| c.get("HERDR_ALERT_DONE")).unwrap_or("");
@@ -444,18 +453,16 @@ fn handle_alerts_key(terminal: &mut Term, app: &mut App, key: KeyCode) -> Result
         match key {
             KeyCode::Char('/') => app.filtering = true,
             KeyCode::Enter => {
-                suspend(terminal, || preview(&app.root, None, false))?;
+                suspend(terminal, || preview(&app.root, None, false, true))?;
             }
-            KeyCode::Char('b') | KeyCode::Char('d') | KeyCode::Char('B') | KeyCode::Char('D') => {
-                let enabled = app
-                    .config()
-                    .is_ok_and(|c| matches!(c.get("HERDR_ALERT_ANIMATION_ENABLED"), "" | "1"));
-                settings::save(
-                    &app.root,
-                    &[("HERDR_ALERT_ANIMATION_ENABLED".into(), if enabled { "0" } else { "1" }.into())],
-                )?;
+            KeyCode::Char('B') | KeyCode::Char('D') => {
+                let event = if key == KeyCode::Char('B') { "BLOCKED" } else { "DONE" };
+                settings::save(&app.root, &[(format!("HERDR_SPRITE_{event}"), "custom".into())])?;
                 app.reload()?;
-                app.message = format!("Custom animation {}.", if enabled { "disabled" } else { "enabled" });
+                app.message = format!("{event} sprite set to the custom animation.");
+            }
+            KeyCode::Char('b') | KeyCode::Char('d') => {
+                app.message = "This row is visual only; it has no sound of its own.".into();
             }
             _ => {}
         }
@@ -464,7 +471,7 @@ fn handle_alerts_key(terminal: &mut Term, app: &mut App, key: KeyCode) -> Result
     match key {
         KeyCode::Char('/') => app.filtering = true,
         KeyCode::Enter => {
-            suspend(terminal, || preview(&app.root, Some(name.as_str()), false))?;
+            suspend(terminal, || preview(&app.root, Some(name.as_str()), false, false))?;
         }
         KeyCode::Char('b') => {
             settings::save(
@@ -601,7 +608,7 @@ fn draw_statusline(frame: &mut Frame, area: Rect, app: &App) {
             format!("Filter by pack: {}_  (Enter/Esc to stop)", app.pack_filter)
         }
         Tab::Alerts if app.selected_alert().is_some_and(|a| a.name == CUSTOM_ANIMATION) => {
-            "Enter preview  b/d/B/D toggle on/off  / filter".to_string()
+            "Enter preview  B/D set as blocked/done sprite  / filter".to_string()
         }
         Tab::Alerts => "Enter preview  b/d set blocked/done sound  B/D set blocked/done sprite  / filter"
             .to_string(),
@@ -636,17 +643,24 @@ fn draw_alerts(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default()
             };
             let mut active = Vec::new();
-            if a.custom_animation {
-                if a.clip == "on" {
-                    active.push("ENABLED");
+            if a.name == app.active_blocked {
+                active.push("SND:BLOCKED".to_string());
+            }
+            if a.name == app.active_done {
+                active.push("SND:DONE".to_string());
+            }
+            let is_sprite = |raw: &str| {
+                if a.custom_animation {
+                    raw == "custom"
+                } else {
+                    a.sprite.as_deref().is_some_and(|sprite| raw == format!("{}:{sprite}", a.game))
                 }
-            } else {
-                if a.name == app.active_blocked {
-                    active.push("BLOCKED");
-                }
-                if a.name == app.active_done {
-                    active.push("DONE");
-                }
+            };
+            if is_sprite(&app.active_sprite_blocked) {
+                active.push("SPR:BLOCKED".to_string());
+            }
+            if is_sprite(&app.active_sprite_done) {
+                active.push("SPR:DONE".to_string());
             }
             let active_cell = if active.is_empty() {
                 Cell::from("")
@@ -657,7 +671,13 @@ fn draw_alerts(frame: &mut Frame, area: Rect, app: &App) {
                 Cell::from(a.name.clone()),
                 Cell::from(a.game.clone()),
                 Cell::from(if a.ready { "ready" } else { "missing" }),
-                Cell::from(if a.clip.is_empty() { "(any)".into() } else { a.clip.clone() }),
+                Cell::from(if a.custom_animation {
+                    "(visual only)".to_string()
+                } else if a.clip.is_empty() {
+                    "(any)".to_string()
+                } else {
+                    a.clip.clone()
+                }),
                 active_cell,
             ])
             .style(style)
@@ -754,6 +774,15 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App) {
     for item in SETTINGS {
         lines.push(Line::from(format!("{:<18} {}", item.label(), item.display(&config))));
     }
+    let animation = config.get("HERDR_ALERT_ANIMATION");
+    if !animation.is_empty() {
+        lines.push(Line::from(format!(
+            "{:<18} {}{}",
+            "Animation file",
+            animation,
+            if Path::new(animation).is_file() { "" } else { " (missing)" }
+        )));
+    }
     if let Some(p) = &app.project {
         lines.push(Line::from(format!("{:<18} {} (branch {})", "Project", p.repo_root, p.branch)));
     }
@@ -772,7 +801,9 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App) {
         }
         let sprite_override = config.get(&format!("HERDR_SPRITE_{upper}"));
         let mut text = format!("{event:<10} {name}");
-        if !sprite_override.is_empty() {
+        if sprite_override == "custom" {
+            text += "  (sprite: custom animation)";
+        } else if !sprite_override.is_empty() {
             text += &format!("  (sprite: {sprite_override})");
         }
         let project_pick = app.project.as_ref().and_then(|p| {

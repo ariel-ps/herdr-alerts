@@ -487,20 +487,30 @@ def check_sprite_settings():
                 while sorted(log.read_text().splitlines()) != sorted(expected) and time.monotonic() < deadline:
                     time.sleep(0.01)
                 assert sorted(log.read_text().splitlines()) == sorted(expected), (flash, sprite, state, log.read_text(), result.stderr)
-            # Toggle the custom artwork without losing it or changing sprite visibility.
+            # The custom animation is a category of sprite like any other,
+            # assigned per blocked/done event (set blocked-sprite/done-sprite
+            # custom) rather than toggled by a separate master switch.
+            # `set animation on|off` is a convenience alias that assigns or
+            # clears "custom" on both events at once.
+            animation_file = home / 'scene.rgba'
+            animation_file.write_text('fake scene')
             with (config / 'config.sh').open('a') as settings:
-                settings.write("\nHERDR_ALERT_ANIMATION='/saved custom animation.rgba'\n")
+                settings.write(f"\nHERDR_ALERT_ANIMATION='{animation_file}'\n")
             cli('enable')
             cli('set', 'flash', 'off')
-            for animation, sprite in [(None, 'on'), ('off', 'on'), ('on', 'on'), ('on', 'off')]:
-                if animation is not None:
-                    cli('set', 'animation', animation)
+            for assign, sprite in [('on', 'on'), ('off', 'on'), ('on', 'on'), ('on', 'off')]:
+                cli('set', 'animation', assign)
                 cli('set', 'sprite', sprite)
                 saved = (config / 'config.sh').read_text()
-                assert "HERDR_ALERT_ANIMATION='/saved custom animation.rgba'" in saved
+                assert f"HERDR_ALERT_ANIMATION='{animation_file}'" in saved
                 assert f"HERDR_ALERT_SPRITE='{int(sprite == 'on')}'" in saved
-                enabled = animation or 'on'
-                assert f'{enabled} (custom artwork; sprites must also be on)' in cli('status')
+                if assign == 'on':
+                    assert "HERDR_SPRITE_BLOCKED='custom'" in saved
+                    assert "HERDR_SPRITE_DONE='custom'" in saved
+                    assert 'sprite override: custom animation' in cli('status')
+                else:
+                    assert "HERDR_SPRITE_BLOCKED=''" in saved
+                    assert "HERDR_SPRITE_DONE=''" in saved
                 for state in ('preview', 'blocked', 'done'):
                     log.write_text('')
                     run_env = {**env, 'HERDR_PLUGIN_ROOT': str(plugin), 'HERDR_PANE_ID': 'wN:p3',
@@ -511,11 +521,19 @@ def check_sprite_settings():
                     assert result.returncode == 0, result.stderr
                     expected = [] if state == 'preview' else ['audio']
                     if sprite == 'on' and state != 'done':
-                        expected.append('/saved custom animation.rgba' if enabled == 'on' else 'sprite')
+                        # A bare CLI preview (no NAME) never forces the custom
+                        # scene -- it isn't previewing any specific event, so
+                        # it only ever falls back to the bundled indicator.
+                        if state == 'preview':
+                            expected.append('sprite')
+                        elif assign == 'on':
+                            expected.append(str(animation_file))
+                        else:
+                            expected.append('sprite')
                     deadline = time.monotonic() + 2
                     while sorted(log.read_text().splitlines()) != sorted(expected) and time.monotonic() < deadline:
                         time.sleep(.01)
-                    assert sorted(log.read_text().splitlines()) == sorted(expected), (animation, sprite, state)
+                    assert sorted(log.read_text().splitlines()) == sorted(expected), (assign, sprite, state)
         finally:
             os.close(master)
             os.close(slave)

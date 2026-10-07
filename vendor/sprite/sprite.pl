@@ -160,7 +160,21 @@ sub load_pack {
     # Packs are baked at whatever size they were built; scaling here rather
     # than rebuilding them means one knob covers every pack, present and future.
     my $side = $w > $h ? $w : $h;
-    my $target = $ENV{SPRITE_PX} || ($version ? ($side > 192 ? 192 : $side) : 52);
+    my $target;
+    if ($ENV{SPRITE_FULLSCREEN}) {
+        # True pixel dimensions aren't knowable here (see the file header), so
+        # this uses the same kind of rough per-cell heuristic already used
+        # below for corner placement: ~7px/column, and a commonly-typical
+        # ~15px/row for a monospace terminal's taller cell. Good enough to
+        # fill most of the pane without the terminal's exact font metrics.
+        my $avail_w = ($cols - 4) * 7;
+        my $avail_h = (($ENV{SPRITE_ROWS} || 24) - 4) * 15;
+        $target = $avail_w < $avail_h ? $avail_w : $avail_h;
+        $target = 512 if $target > 512;
+        $target = 16 if $target < 16;
+    } else {
+        $target = $ENV{SPRITE_PX} || ($version ? ($side > 192 ? 192 : $side) : 52);
+    }
     return invalid_pack() unless $target =~ /^\d+$/ && $target >= 1 && $target <= 512;
     my ($tw, $th) = (int($w * $target / $side) || 1, int($h * $target / $side) || 1);
     return invalid_pack() if $n * $tw * $th * 4 > 64 * 1024 * 1024;
@@ -220,9 +234,22 @@ select((select($fh), $| = 1)[0]);
 
 # Keep clear of the right edge, scaled to the sprite: a cell is roughly 7px
 # wide at any sane font size, so this stays a shade wider than the image and
-# tucks into the corner without being clipped.
-my $col = $cols - (int($WIDTH / 7) + 1);
-$col = 1 if $col < 1;
+# tucks into the corner without being clipped. A fullscreen scene centers
+# instead, using the same rough per-cell heuristic as its own sizing above.
+my ($col, $row);
+if ($ENV{SPRITE_FULLSCREEN}) {
+    my $rows_n = $ENV{SPRITE_ROWS} || 24;
+    my $width_cols = int($WIDTH / 7) || 1;
+    my $height_rows = int($HEIGHT / 15) || 1;
+    $col = int(($cols - $width_cols) / 2) + 1;
+    $row = int(($rows_n - $height_rows) / 2) + 1;
+    $col = 1 if $col < 1;
+    $row = 1 if $row < 1;
+} else {
+    $col = $cols - (int($WIDTH / 7) + 1);
+    $col = 1 if $col < 1;
+    $row = 1;
+}
 # Keyed on the window, not the pid, so a second alert replaces the sprite still
 # sitting in that pane instead of stacking a new image on top of it.
 my $id = 7000 + (($ENV{KITTY_WINDOW_ID} || $$) % 900);
@@ -238,7 +265,7 @@ sub play_once {
     $n *= int((16 + $n - 1) / $n) if $legacy_pack && $n < 16;
     my $next_focus_check = 0;
     for my $i (0 .. $n - 1) {
-        show_frame($out, $i % @$pack_frames, $id, 1, $col);
+        show_frame($out, $i % @$pack_frames, $id, $row, $col);
         my $delay = $pack_delays->[$i % @$pack_frames];
         my $until = clock_gettime(CLOCK_MONOTONIC) + $delay;
         while (1) {
