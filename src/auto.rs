@@ -166,6 +166,29 @@ pub fn set(root: &Path, event: &str, name: &str) -> Result<()> {
     Ok(())
 }
 
+pub struct ProjectStatus {
+    pub repo_root: String,
+    pub branch: String,
+    pub blocked: Option<String>,
+    pub done: Option<String>,
+}
+
+/// Best-effort, never fails: None when cwd isn't inside a git project, or the
+/// cache can't be read -- for `status`/`configure` to show what the hook
+/// would actually apply here right now, without their whole display failing
+/// just because there is nothing cached yet (or no project at all).
+pub fn lookup(cwd: &Path) -> Option<ProjectStatus> {
+    let scope = resolve_scope(cwd).ok()?;
+    let projects = load_projects().ok()?;
+    let entry = &projects[&scope.project_key][&scope.scope_key];
+    Some(ProjectStatus {
+        repo_root: scope.repo_root,
+        branch: scope.branch,
+        blocked: entry["blocked"].as_str().map(String::from),
+        done: entry["done"].as_str().map(String::from),
+    })
+}
+
 /// `herdr-alert auto show`: what would actually apply here right now, with
 /// no network call and no write -- for checking the project/branch/worktree
 /// scoping resolved the way you expect before it fires in a real alert.

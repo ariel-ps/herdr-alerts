@@ -452,6 +452,7 @@ fn preview(root: &Path, name: Option<&str>, flash_flag: bool) -> Result<()> {
 }
 
 fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<()> {
+    let project = env::current_dir().ok().and_then(|cwd| auto::lookup(&cwd));
     println!(
         "Herdr Alert\n\n  {:<18} {}",
         "Automatic alerts",
@@ -461,6 +462,9 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
             "enabled (requires the plugin to be enabled)"
         }
     );
+    if let Some(p) = &project {
+        println!("  {:<18} {} (branch {})", "Project", p.repo_root, p.branch);
+    }
     println!(
         "  {:<18} {}",
         "Flash",
@@ -541,6 +545,12 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
         let sprite_override = config.get(&format!("HERDR_SPRITE_{upper}"));
         if !sprite_override.is_empty() {
             println!("             sprite override: {sprite_override}");
+        }
+        let project_pick = project.as_ref().and_then(|p| {
+            if event == "blocked" { p.blocked.as_ref() } else { p.done.as_ref() }
+        });
+        if let Some(pick) = project_pick {
+            println!("             project override: {pick} (wins over the plain name above)");
         }
     }
     let player = executable("afplay")

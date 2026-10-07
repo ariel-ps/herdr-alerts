@@ -2,7 +2,7 @@
 // same Catalog, settings::Config, and preview() the CLI commands use, so
 // anything changed here is readable and settable through the flag-based
 // commands too -- this is a second way in, not a second source of truth.
-use crate::{executable, failure, preview, settings, valid_name, Catalog, Result};
+use crate::{auto, executable, failure, preview, settings, valid_name, Catalog, Result};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
@@ -17,6 +17,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::{
+    env,
     io::{self, Stdout},
     path::{Path, PathBuf},
     time::Duration,
@@ -136,6 +137,10 @@ struct App {
     editing: Option<String>,
     message: String,
     quit: bool,
+    /// What `herdr-alert auto`/`auto set` has cached for the directory this
+    /// TUI was launched from, if any -- computed once, since that cwd can't
+    /// change over the TUI's own lifetime.
+    project: Option<auto::ProjectStatus>,
 }
 
 impl App {
@@ -153,6 +158,7 @@ impl App {
             editing: None,
             message: "Tab/Shift+Tab or 1-4 to switch panes. q to quit.".into(),
             quit: false,
+            project: env::current_dir().ok().and_then(|cwd| auto::lookup(&cwd)),
         };
         app.reload()?;
         Ok(app)
@@ -636,6 +642,9 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App) {
     for item in SETTINGS {
         lines.push(Line::from(format!("{:<18} {}", item.label(), item.display(&config))));
     }
+    if let Some(p) = &app.project {
+        lines.push(Line::from(format!("{:<18} {} (branch {})", "Project", p.repo_root, p.branch)));
+    }
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Alerts",
@@ -653,6 +662,12 @@ fn draw_status(frame: &mut Frame, area: Rect, app: &App) {
         let mut text = format!("{event:<10} {name}");
         if !sprite_override.is_empty() {
             text += &format!("  (sprite: {sprite_override})");
+        }
+        let project_pick = app.project.as_ref().and_then(|p| {
+            if event == "blocked" { p.blocked.as_ref() } else { p.done.as_ref() }
+        });
+        if let Some(pick) = project_pick {
+            text += &format!("  (project override: {pick})");
         }
         lines.push(Line::from(text));
     }
