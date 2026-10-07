@@ -74,17 +74,19 @@ Outside Herdr, this uses the original `flash-term` background-color effect (OSC 
 
 Sprites are on by default for previews and blocked-agent alerts. Use `herdr-alert set sprite off` or `herdr-alert set sprite on` to save your preference. Sprites work independently of flashing; turn both off for sound only. Cached sprite packs supply game artwork; otherwise a built-in animated indicator appears. Sprite rendering requires Kitty graphics support, either through Herdr or a compatible terminal.
 
-## Let the LLM pick a sound per project
+## Pick a sound per project and branch
 
 ```sh
 cd ~/projects/my-repo
-herdr-alert auto              # Picks and saves both blocked and done for this project
-herdr-alert auto blocked      # Picks and saves just one
+herdr-alert auto              # Ask the LLM; picks and saves both blocked and done
+herdr-alert auto blocked      # Ask the LLM, and save just one
+herdr-alert auto set done win # Save a pick yourself, no LLM call
+herdr-alert auto show         # What's cached for this project's current branch
 ```
 
-Reads the current git branch name and last few commit subjects, and asks the installed `claude` CLI to pick the best-fitting sound from the full catalog's short vibe tags (a bugfix branch tends to land on something like `die`; a feature branch on something like `davewin`). Requires Claude Code installed and signed in; costs a small amount per run (well under a cent on Haiku) and takes a few seconds, so it only runs when you ask for it — never automatically from an alert itself.
+`herdr-alert auto` reads the current git branch name and last few commit subjects and asks the installed `claude` CLI to pick the best-fitting sound from the full catalog's short vibe tags (a bugfix branch tends to land on something like `die`; a feature branch on something like `davewin`). Requires Claude Code installed and signed in; costs a small amount per run (well under a cent on Haiku) and takes a few seconds, so it only runs when you ask for it — never automatically from an alert itself. `herdr-alert auto set` records a pick directly instead, with no LLM call at all — useful if something else (a coding agent already reasoning about the branch) already knows what it wants to use.
 
-The pick is saved per git repository (by its root path) in `${XDG_DATA_HOME:-~/.local/share}/herdr-alert/projects.json`, and applies to every pane working in that project or a subdirectory of it, overriding the global `set blocked`/`set done` choice but not a literal `HERDR_SOUND_*` override. Projects that never run `herdr-alert auto` are completely unaffected. Re-run it any time — for example after switching branches — to update the pick.
+Picks are cached per **project and branch**: by the repository's own git directory, which every [worktree](https://git-scm.com/docs/git-worktree) of that repository shares, and then by branch name within it. Switching branches in a checkout, or working in a second worktree of the same project, each resolve their own pick rather than reusing whatever was last computed for that directory; a worktree with no branch (a detached `HEAD`) gets one scoped to its own path instead. The pick applies to every pane working on that project and branch, overriding the global `set blocked`/`set done` choice but not a literal `HERDR_SOUND_*` override. Projects that never run `herdr-alert auto`/`auto set` are completely unaffected.
 
 ## Use your own animation
 
@@ -123,7 +125,9 @@ controls visibility of both normal sprites and custom animations.
 | `herdr-alert list [PACK]` | Browse sounds and see which are ready, optionally one pack at a time |
 | `herdr-alert download [PACK ...]` | Download sounds and available sprites; omit PACK for all packs |
 | `herdr-alert download --sprites [PACK ...]` | Download only sprite artwork |
-| `herdr-alert auto [blocked\|done]` | LLM-pick a sound fitting this project's branch/commits; cached per repo |
+| `herdr-alert auto [blocked\|done]` | LLM-pick a sound fitting this project's branch/commits; cached per project+branch |
+| `herdr-alert auto set blocked\|done NAME` | Record a pick yourself for this project+branch, no LLM call |
+| `herdr-alert auto show` | Show what's cached for this project's current branch |
 | `herdr-alert set blocked NAME` | Choose the needs-attention sound |
 | `herdr-alert set done NAME` | Choose the finished sound |
 | `herdr-alert set blocked-sprite\|done-sprite NAME` | Show a different alert's sprite instead of the sound's own |

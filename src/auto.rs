@@ -1,10 +1,23 @@
-// `herdr-alert auto [blocked|done]`: ask an LLM to pick a project-fitting
-// alert from the current git branch name and recent commit subjects, cached
-// per repository so the per-pane hook can apply it without a network call.
+// `herdr-alert auto`: pick a project-fitting alert from the current git
+// branch name and recent commit subjects, cached per project+branch so the
+// per-pane hook can apply it without a network call.
 //
-// Deliberately on-demand and explicit, not automatic: this shells out to the
-// `claude` CLI, which costs money and ~10-15s per call, so it only ever runs
-// when the user asks for it, never from the latency-sensitive status hook.
+// Deliberately on-demand and explicit, not automatic: classification is never
+// invoked from the latency-sensitive status hook, only when a human (or an
+// orchestrating agent) asks for it.
+//
+// Two ways to classify:
+//   herdr-alert auto [blocked|done]            spawn the `claude` CLI itself
+//   herdr-alert auto set blocked|done NAME     record a pick an agent already
+//                                              made in its own reasoning, with
+//                                              no subprocess spent re-asking
+//
+// Cached by PROJECT (the repository's git-common-dir, identical across every
+// worktree of that repository) and then by BRANCH within it (or, for a
+// detached-HEAD worktree with no branch name, by that worktree's own
+// toplevel path) -- so switching branches in one checkout, or working in a
+// second worktree of the same project, each resolve their own pick instead
+// of silently reusing whatever was last computed for that directory.
 use crate::{executable, failure, usage, valid_name, Catalog, Result};
 use serde_json::{json, Value};
 use std::{
@@ -16,23 +29,39 @@ use std::{
 };
 
 #[derive(Clone, Copy)]
-pub enum Scope {
+enum Events {
     Both,
     Blocked,
     Done,
 }
-impl Scope {
+impl Events {
     fn parse(arg: Option<&str>) -> Result<Self> {
         match arg {
-            None => Ok(Scope::Both),
-            Some("blocked") => Ok(Scope::Blocked),
-            Some("done") => Ok(Scope::Done),
+            None => Ok(Events::Both),
+            Some("blocked") => Ok(Events::Blocked),
+            Some("done") => Ok(Events::Done),
             _ => Err(usage("usage: herdr-alert auto [blocked|done]")),
         }
     }
     fn wants(self, event: &str) -> bool {
-        matches!((self, event), (Scope::Both, _) | (Scope::Blocked, "blocked") | (Scope::Done, "done"))
+        matches!((self, event), (Events::Both, _) | (Events::Blocked, "blocked") | (Events::Done, "done"))
     }
+}
+
+struct Scope {
+    /// The repository's git-common-dir, absolute -- identical across every
+    /// worktree of the same clone, so it identifies the PROJECT rather than
+    /// any one checkout of it.
+    project_key: String,
+    /// The branch name, or "detached:<toplevel>" for a worktree with no
+    /// branch (a detached HEAD) -- distinguishes branches, and distinguishes
+    /// detached worktrees from each other since they'd otherwise all report
+    /// branch "HEAD".
+    scope_key: String,
+    /// This checkout's own directory, for human-facing messages only.
+    repo_root: String,
+    /// The raw branch name ("HEAD" if detached), for human-facing messages.
+    branch: String,
 }
 
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
@@ -42,6 +71,17 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
         .filter(|s| !s.is_empty())
+}
+
+fn resolve_scope(cwd: &Path) -> Result<Scope> {
+    let repo_root = git(cwd, &["rev-parse", "--show-toplevel"]).ok_or_else(|| {
+        usage("Run herdr-alert auto from inside a git project; none was found here.")
+    })?;
+    let project_key = git(cwd, &["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .ok_or_else(|| failure("could not resolve this repository's git directory"))?;
+    let branch = git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|| "HEAD".into());
+    let scope_key = if branch == "HEAD" { format!("detached:{repo_root}") } else { branch.clone() };
+    Ok(Scope { project_key, scope_key, repo_root, branch })
 }
 
 fn projects_file() -> Result<PathBuf> {
@@ -81,19 +121,83 @@ fn save_projects(data: &Value) -> Result<()> {
     result.map_err(failure)
 }
 
-pub fn run(root: &Path, arg: Option<&str>) -> Result<()> {
-    let scope = Scope::parse(arg)?;
+fn apply_pick(scope: &Scope, updates: &[(&str, &str)]) -> Result<()> {
+    let mut projects = load_projects()?;
+    let project = projects
+        .as_object_mut()
+        .ok_or_else(|| failure("invalid project cache"))?
+        .entry(scope.project_key.clone())
+        .or_insert_with(|| json!({}));
+    let entry = project
+        .as_object_mut()
+        .ok_or_else(|| failure("invalid project cache"))?
+        .entry(scope.scope_key.clone())
+        .or_insert_with(|| json!({}));
+    for (event, name) in updates {
+        entry[*event] = json!(name);
+    }
+    save_projects(&projects)
+}
+
+fn known_names(root: &Path) -> Result<Vec<String>> {
+    let mut vibes = Catalog::load(root)?.vibes()?;
+    vibes.sort();
+    Ok(vibes.into_iter().map(|(name, _)| name).collect())
+}
+
+/// `herdr-alert auto set blocked|done NAME`: record a pick an agent already
+/// made itself (its own reasoning, in its own context) -- no subprocess, no
+/// network call, no cost beyond the write.
+pub fn set(root: &Path, event: &str, name: &str) -> Result<()> {
+    if !["blocked", "done"].contains(&event) {
+        return Err(usage("usage: herdr-alert auto set blocked|done NAME"));
+    }
+    let names = known_names(root)?;
+    if !valid_name(name) || !names.iter().any(|n| n == name) {
+        return Err(usage(format!("Unknown alert: {name}. Run herdr-alert list.")));
+    }
     let cwd = env::current_dir().map_err(failure)?;
-    let repo_root = git(&cwd, &["rev-parse", "--show-toplevel"]).ok_or_else(|| {
-        usage("Run herdr-alert auto from inside a git project; none was found here.")
-    })?;
-    let branch = git(&cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|| "(unknown)".into());
+    let scope = resolve_scope(&cwd)?;
+    apply_pick(&scope, &[(event, name)])?;
+    println!(
+        "{event} set to {name} for branch {} in {}\nPreview: herdr-alert play {name}",
+        scope.branch, scope.repo_root
+    );
+    Ok(())
+}
+
+/// `herdr-alert auto show`: what would actually apply here right now, with
+/// no network call and no write -- for checking the project/branch/worktree
+/// scoping resolved the way you expect before it fires in a real alert.
+pub fn show(_root: &Path) -> Result<()> {
+    let cwd = env::current_dir().map_err(failure)?;
+    let scope = resolve_scope(&cwd)?;
+    let projects = load_projects()?;
+    let entry = &projects[&scope.project_key][&scope.scope_key];
+    println!("Project:  {}", scope.repo_root);
+    println!("Branch:   {}", scope.branch);
+    for event in ["blocked", "done"] {
+        match entry[event].as_str() {
+            Some(name) => println!("  {event:<8} {name}"),
+            None => println!("  {event:<8} (not cached; run herdr-alert auto)"),
+        }
+    }
+    Ok(())
+}
+
+/// `herdr-alert auto [blocked|done]`: spawn the `claude` CLI to classify this
+/// project's branch and recent commits, then save the picks via the same
+/// scope-and-cache path `set` uses.
+pub fn run(root: &Path, arg: Option<&str>) -> Result<()> {
+    let events = Events::parse(arg)?;
+    let cwd = env::current_dir().map_err(failure)?;
+    let scope = resolve_scope(&cwd)?;
     let commits = git(&cwd, &["log", "-5", "--pretty=%s"]).unwrap_or_default();
 
+    let names = known_names(root)?;
     let catalog = Catalog::load(root)?;
     let mut vibes = catalog.vibes()?;
     vibes.sort();
-    let names: Vec<&str> = vibes.iter().map(|(n, _)| n.as_str()).collect();
     let catalog_block = vibes
         .iter()
         .map(|(name, vibe)| format!("- {name}: {vibe}"))
@@ -101,7 +205,7 @@ pub fn run(root: &Path, arg: Option<&str>) -> Result<()> {
         .join("\n");
 
     let claude = executable("claude").ok_or_else(|| {
-        failure("the `claude` CLI is required for herdr-alert auto. Install Claude Code, or set sounds manually with herdr-alert set blocked|done.")
+        failure("the `claude` CLI is required for herdr-alert auto. Install Claude Code, or record a pick yourself with herdr-alert auto set blocked|done NAME.")
     })?;
     let schema = json!({
         "type": "object",
@@ -118,7 +222,8 @@ pub fn run(root: &Path, arg: Option<&str>) -> Result<()> {
         based only on the vibe tags given -- do not invent reasoning beyond matching tone. Respond only \
         through the required JSON schema.";
     let user_prompt = format!(
-        "Git branch: {branch}\nRecent commits:\n{}\n\nCatalog:\n{catalog_block}",
+        "Git branch: {}\nRecent commits:\n{}\n\nCatalog:\n{catalog_block}",
+        scope.branch,
         if commits.is_empty() { "(none yet)".into() } else { commits }
     );
 
@@ -152,7 +257,7 @@ pub fn run(root: &Path, arg: Option<&str>) -> Result<()> {
         let name = picked[event]
             .as_str()
             .ok_or_else(|| failure("claude did not return a usable pick"))?;
-        if !valid_name(name) || !names.contains(&name) {
+        if !valid_name(name) || !names.iter().any(|n| n == name) {
             return Err(failure(format!("claude picked an unknown alert: {name}")));
         }
         Ok(name.to_owned())
@@ -160,29 +265,24 @@ pub fn run(root: &Path, arg: Option<&str>) -> Result<()> {
     let blocked = pick("blocked")?;
     let done = pick("done")?;
 
-    let mut projects = load_projects()?;
-    let entry = projects
-        .as_object_mut()
-        .ok_or_else(|| failure("invalid project cache"))?
-        .entry(repo_root.clone())
-        .or_insert_with(|| json!({}));
-    if scope.wants("blocked") {
-        entry["blocked"] = json!(blocked);
+    let mut updates = Vec::new();
+    if events.wants("blocked") {
+        updates.push(("blocked", blocked.as_str()));
     }
-    if scope.wants("done") {
-        entry["done"] = json!(done);
+    if events.wants("done") {
+        updates.push(("done", done.as_str()));
     }
-    save_projects(&projects)?;
+    apply_pick(&scope, &updates)?;
 
-    println!("Branch: {branch}\n");
+    println!("Branch: {}\n", scope.branch);
     for (event, name) in [("blocked", &blocked), ("done", &done)] {
-        let saved = if scope.wants(event) {
+        let saved = if events.wants(event) {
             "saved".to_owned()
         } else {
             format!("not saved; herdr-alert auto {event} to save it")
         };
         println!("  {event:<8} {name:<12} ({saved})");
     }
-    println!("\nApplies only inside {repo_root}\nPreview: herdr-alert play {blocked}");
+    println!("\nApplies only to branch {} in {}\nPreview: herdr-alert play {blocked}", scope.branch, scope.repo_root);
     Ok(())
 }

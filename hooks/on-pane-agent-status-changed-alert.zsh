@@ -35,13 +35,17 @@
 #   HERDR_SPRITE_DONE=<game>:<sprite>     instead of the sound alert's own
 #   SPRITE_NAME=<name>          override the sprite the alert chose
 #
-# `herdr-alert auto` LLM-picks a name per git project from its branch and
-# commits, caching it in ${XDG_DATA_HOME:-~/.local/share}/herdr-alert/projects.json
-# keyed by repo root. Consulted here only when that file exists, so an
-# install that never runs `auto` pays nothing extra: one `herdr pane get`
-# and one more `jq` read, to turn the firing pane's cwd into its project's
-# pick, which then stands in for HERDR_ALERT_BLOCKED/DONE for this alert
-# only (a literal HERDR_SOUND_* path still wins over it, same as a name).
+# `herdr-alert auto` LLM-picks a name per project+branch from its branch and
+# commits, caching it in ${XDG_DATA_HOME:-~/.local/share}/herdr-alert/projects.json,
+# keyed first by the repository's git-common-dir (shared by every worktree of
+# that repository) and then by branch name (or "detached:<toplevel>" for a
+# worktree with no branch), the same two keys `herdr-alert auto`/`auto set`
+# compute. Consulted here only when that file exists, so an install that
+# never runs `auto` pays nothing extra: one `herdr pane get`, two `git
+# rev-parse` calls, and one `jq` read, to turn the firing pane's cwd into its
+# project+branch's pick, which then stands in for HERDR_ALERT_BLOCKED/DONE
+# for this alert only (a literal HERDR_SOUND_* path still wins over it, same
+# as a name).
 #
 # Manual previews use the same saved flash setting:
 #   herdr-sound list
@@ -123,22 +127,28 @@ case "$state" in
   *)       exit 0 ;;
 esac
 
-# A project-scoped pick from `herdr-alert auto`, consulted only when that
-# cache file exists; wins over the plain global name but not a literal
-# HERDR_SOUND_* path. One extra `herdr pane get` plus one `jq` read, paid
-# only by installs that have actually run `herdr-alert auto` at least once.
+# A project+branch-scoped pick from `herdr-alert auto`/`auto set`, consulted
+# only when that cache file exists; wins over the plain global name but not
+# a literal HERDR_SOUND_* path. One extra `herdr pane get` plus two `git
+# rev-parse` calls plus one `jq` read, paid only by installs that have
+# actually run `herdr-alert auto`/`auto set` at least once.
 projects_file="${XDG_DATA_HOME:-$HOME/.local/share}/herdr-alert/projects.json"
 if [[ -r "$projects_file" && -n "$pane" && "$pane" != *[^a-zA-Z0-9_:-]* ]]; then
   pane_cwd=$("${HERDR_BIN_PATH:-herdr}" pane get "$pane" 2>/dev/null | jq -r '.result.pane.cwd // empty' 2>/dev/null)
-  if [[ -n "$pane_cwd" ]]; then
-    project_pick=$(jq -r --arg cwd "$pane_cwd" --arg event "$state" '
-      to_entries
-      | map(select(.key as $k | ($cwd == $k) or ($cwd | startswith($k + "/"))))
-      | sort_by(.key | length)
-      | last
-      | if . then (.value[$event] // empty) else empty end
-    ' "$projects_file" 2>/dev/null)
-    [[ -n "$project_pick" ]] && name="$project_pick"
+  if [[ -n "$pane_cwd" && -d "$pane_cwd" ]]; then
+    project_key=$(git -C "$pane_cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+    branch=$(git -C "$pane_cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [[ -n "$project_key" ]]; then
+      if [[ -z "$branch" || "$branch" == HEAD ]]; then
+        toplevel=$(git -C "$pane_cwd" rev-parse --show-toplevel 2>/dev/null)
+        scope_key="detached:$toplevel"
+      else
+        scope_key="$branch"
+      fi
+      project_pick=$(jq -r --arg pk "$project_key" --arg sk "$scope_key" --arg event "$state" \
+        '(.[$pk][$sk][$event]) // empty' "$projects_file" 2>/dev/null)
+      [[ -n "$project_pick" ]] && name="$project_pick"
+    fi
   fi
 fi
 

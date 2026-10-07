@@ -27,7 +27,9 @@ Usage: herdr-alert COMMAND [OPTIONS]
 Commands:
   configure             Full-screen interactive configuration
   auto [blocked|done]   Ask the LLM to pick a sound fitting this project's current
-                        branch/commits; cached per git repo. Needs the claude CLI.
+                        branch/commits; cached per project+branch. Needs the claude CLI.
+  auto set blocked|done NAME  Record a pick yourself, no LLM call
+  auto show             Show what's cached for this project's current branch
   play [NAME]          Preview a sound with your flash and sprite settings
   list [PACK]           Browse sounds and download availability, one pack or all
   download [PACK ...]   Download sounds and available sprite artwork
@@ -606,6 +608,8 @@ fn execute(mut args: Vec<String>) -> Result<()> {
             preview(&root, name, flash)
         }
         "configure" if args.len() == 1 => tui::run(&root),
+        "auto" if args.len() == 4 && args[1] == "set" => auto::set(&root, &args[2], &args[3]),
+        "auto" if args.len() == 2 && args[1] == "show" => auto::show(&root),
         "auto" if args.len() <= 2 => auto::run(&root, args.get(1).map(String::as_str)),
         "list" if args.len() <= 2 => Catalog::load(&root)?.list(args.get(1).map(String::as_str)),
         "status" if args.len() == 1 => status(
