@@ -91,8 +91,24 @@ def from_files(paths):
     return [transparent(Image.open(p).convert("RGBA")) for p in paths]
 
 
+def composite(canvas_size, layers):
+    """One frame built from several (sheet, rect, paste_xy) crops, stacked in
+    order. Used where no single sheet cell shows the interaction (e.g. Mario
+    standing on a Koopa) but the source draws it as separate sprites anyway."""
+    canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+    sheets = {}
+    for sheet_path, rect, xy in layers:
+        sheet = sheets.setdefault(sheet_path, Image.open(sheet_path).convert("RGBA"))
+        x, y, w, h = rect
+        crop = transparent(sheet.crop((x, y, x + w, y + h)).copy())
+        canvas.paste(crop, xy, crop)
+    return canvas
+
+
 def build_mario(src, out):
     g = src / "resources/graphics"
+    mario_sheet = g / "mario_bros.png"
+    enemies_sheet = g / "smb_enemies_sheet.png"
     packs = {
         # mario.py:111-115, bounced so the loop reads as a walk
         "walk": (g / "mario_bros.png",
@@ -117,7 +133,22 @@ def build_mario(src, out):
     }
     for name, (sheet, rects) in packs.items():
         write_pack(from_rects(sheet, rects), out / f"{name}.rgba")
-    return len(packs)
+
+    # Mario jumping on a Koopa: his falling frame (mario.py:117) over the
+    # Koopa's walk frames, landing on its shell frame (enemies.py:172,
+    # jumped_on's frame_index 2) — the same stomp-to-shell sequence the game
+    # itself plays, just drawn as one scene instead of two separate sprites.
+    jump_rect = (144, 32, 16, 16)
+    stomp_frames = [
+        composite((16, 40), [(enemies_sheet, (150, 0, 16, 24), (0, 16)),
+                             (mario_sheet, jump_rect, (0, 4))]),
+        composite((16, 40), [(enemies_sheet, (180, 0, 16, 24), (0, 16)),
+                             (mario_sheet, jump_rect, (0, 0))]),
+        composite((16, 40), [(enemies_sheet, (360, 5, 16, 15), (0, 25)),
+                             (mario_sheet, jump_rect, (0, 9))]),
+    ]
+    write_pack(stomp_frames, out / "stomp.rgba")
+    return len(packs) + 1
 
 
 def build_mvdk(src, out):

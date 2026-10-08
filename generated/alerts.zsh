@@ -22,6 +22,7 @@ __herdr_alert_spec() {
     coin) alert_game='mario'; alert_clip='coin (nes)'; alert_sprite='star' ;;
     powerup) alert_game='mario'; alert_clip='Power Up (nes)'; alert_sprite='fireflower' ;;
     die) alert_game='mario'; alert_clip='Mario 1 - Die'; alert_sprite='goomba' ;;
+    stomp) alert_game='mario'; alert_clip='Mario 1 - Die'; alert_sprite='stomp' ;;
     gameover) alert_game='mario'; alert_clip='Mario 1 - Game Over'; alert_sprite='koopa' ;;
     waiting) alert_game='mario'; alert_clip='Break Brick'; alert_sprite='jump' ;;
     dk) alert_game='mvdk'; alert_sprite='dk' ;;
@@ -36,7 +37,7 @@ __herdr_alert_spec() {
 
 # Every name, for the hook's `--list` mode and for tab completion.
 __herdr_alert_names() {
-  print -r -- 'unit-ready tesla harvester orca kaboom redalert win 1up coin powerup die gameover waiting dk barrel punchout spin codec kirby'
+  print -r -- 'unit-ready tesla harvester orca kaboom redalert win 1up coin powerup die stomp gameover waiting dk barrel punchout spin codec kirby'
 }
 
 # herdr transition -> the alert it plays when nothing overrides it.
