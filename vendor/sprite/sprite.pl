@@ -233,6 +233,7 @@ my %BACKGROUNDS = (
     night => sub { bg_stars(@_) },
     grid  => sub { bg_grid(@_) },
     solid => sub { bg_solid([28, 28, 32], @_) },
+    hills => sub { bg_hills(@_) },
 );
 
 sub bg_gradient {
@@ -276,6 +277,44 @@ sub bg_grid {
         for my $x (0 .. $w - 1) {
             my $on_line = ($x % $step == 0) || ($y % $step == 0);
             $px .= $on_line ? pack('C4', 54, 64, 78, 255) : pack('C4', 20, 22, 28, 255);
+        }
+    }
+    return $px;
+}
+
+sub hill_height {
+    my ($x, $cx, $r, $amp) = @_;
+    my $dx = ($x - $cx) / $r;
+    return 0 if abs($dx) >= 1;
+    return $amp * sqrt(1 - $dx * $dx);
+}
+
+# A generic rolling-hills landscape: two plain dome-shaped silhouettes (not
+# any particular game's bush/cloud shapes) over a flat ground strip.
+sub bg_hills {
+    my ($w, $h) = @_;
+    my $horizon = int($h * 0.78);
+    $horizon = $h - 1 if $horizon >= $h;
+    my @far  = ($w * 0.72, $w * 0.46, $h * 0.13, [120, 168, 132]);
+    my @near = ($w * 0.28, $w * 0.40, $h * 0.18, [70, 132, 84]);
+    my (@far_h, @near_h);
+    for my $x (0 .. $w - 1) {
+        $far_h[$x]  = hill_height($x, @far[0 .. 2]);
+        $near_h[$x] = hill_height($x, @near[0 .. 2]);
+    }
+    my $px = '';
+    for my $y (0 .. $h - 1) {
+        if ($y > $horizon) {
+            $px .= pack('C4', 58, 100, 60, 255) x $w;
+            next;
+        }
+        my $t = $horizon > 0 ? $y / $horizon : 0;
+        my @sky = (int(150 + (225 - 150) * $t), int(190 + (235 - 190) * $t), int(230 + (245 - 230) * $t));
+        for my $x (0 .. $w - 1) {
+            my @rgb = $y >= $horizon - $near_h[$x] ? @{ $near[3] }
+                    : $y >= $horizon - $far_h[$x]  ? @{ $far[3] }
+                    : @sky;
+            $px .= pack('C4', @rgb, 255);
         }
     }
     return $px;

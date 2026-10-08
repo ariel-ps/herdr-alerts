@@ -34,7 +34,8 @@
     "dusk":  "warm orange-to-purple sunset gradient",
     "night": "dark starfield",
     "grid":  "dark technical grid",
-    "solid": "flat neutral backdrop"
+    "solid": "flat neutral backdrop",
+    "hills": "a generic rolling-hills landscape over a grass strip"
   },
 
   "sprite_sound": {
