@@ -1,19 +1,37 @@
 # Herdr Alerts
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Herdr plugin](https://img.shields.io/badge/Herdr-plugin-5b8def.svg)](https://herdr.dev)
+[![Rust](https://img.shields.io/badge/Rust-1.87%2B-orange.svg)](Cargo.toml)
+
 **Hear when an agent finishes or needs your attention. See which pane needs you.**
 
 Herdr Alerts plays a sound and flashes the affected pane when an agent finishes or becomes blocked. Its Rust CLI, `herdr-alert`, previews sounds, flashes, and animated sprites. An included tone works immediately; optional game packs let you choose your own alert sounds.
 
-```sh
-herdr-alert play                 # Preview sound, flash, and sprite
-herdr-alert set flash off        # Disable flashing
-herdr-alert download mario       # Get sounds and sprite artwork
-herdr-alert set done 1up         # Use it when an agent finishes
-```
-
-`herdr-alert tui` opens a full-screen menu for everything below — browsing alerts, downloads, settings, and status:
-
 ![herdr-alert tui — Alerts tab](docs/images/tui-alerts.png)
+
+## Contents
+
+- [Features](#features)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Choose your sounds](#choose-your-sounds)
+- [Pick a sound per project and branch](#pick-a-sound-per-project-and-branch)
+- [Use your own animation](#use-your-own-animation)
+- [Commands](#commands)
+- [Settings](#settings)
+- [Troubleshooting](#no-sound)
+- [Development](#development)
+- [License](#license)
+
+## Features
+
+- **Sound, flash, and sprite** on every `blocked`/`done` pane transition, with an included tone that works with zero setup.
+- **A full-screen TUI** (`herdr-alert tui`) for browsing alerts, downloading packs, and changing settings without memorizing flags.
+- **A curated sound/sprite catalog** spanning several retro game packs, downloaded on demand — nothing is bundled up front.
+- **LLM-assisted picks** (`herdr-alert auto`) that choose a fitting alert from your project's branch name and recent commits, cached per project and branch.
+- **Your own animation** — import a GIF or animated PNG and assign it as any event's sprite, rendered full-screen.
+- **Zero-config fallback** — every feature degrades gracefully to a bundled tone or built-in indicator when a pack isn't downloaded.
 
 ## Install
 
@@ -43,6 +61,16 @@ To use `herdr-alert` in your shell, source the installed plugin's `shell.bash` f
 
 </details>
 
+## Quick start
+
+```sh
+herdr-alert play                 # Preview sound, flash, and sprite
+herdr-alert set flash off        # Disable flashing
+herdr-alert download mario       # Get sounds and sprite artwork
+herdr-alert set done 1up         # Use it when an agent finishes
+herdr-alert tui                  # Open the full-screen menu for everything below
+```
+
 ## Choose your sounds
 
 ```sh
@@ -57,20 +85,14 @@ herdr-alert set blocked tesla
 
 Choices apply to the next alert without restarting Herdr. Missing game sounds fall back to the included tone during automatic alerts. Automatic alerts also flash the pane and show sprites when an agent needs attention.
 
-Downloads include both sound and available sprite artwork. If you downloaded
-sounds with an older version, add the missing artwork without downloading audio again:
+Downloads include both sound and available sprite artwork. If you downloaded sounds with an older version, add the missing artwork without downloading audio again:
 
 ```sh
 herdr-alert download --sprites mario redalert
 herdr-alert play 1up
 ```
 
-The yellow circular animation is the built-in fallback, not downloaded game artwork.
-Sprites play a complete cycle (at least about a second for legacy packs) and disappear when the affected pane is focused. If it is
-unfocused, they keep animating until you return. This applies to automatic alerts,
-`play`, and menu previews. Focus tracking uses Herdr's pane state, with Kitty window
-focus when available; a 30-minute limit prevents abandoned animations. Without
-focus tracking, or with `SPRITE_PERSIST=0`, sprites animate once.
+The yellow circular animation is the built-in fallback, not downloaded game artwork. Sprites play a complete cycle (at least about a second for legacy packs) and disappear when the affected pane is focused. If it is unfocused, they keep animating until you return. This applies to automatic alerts, `play`, and menu previews. Focus tracking uses Herdr's pane state, with Kitty window focus when available; a 30-minute limit prevents abandoned animations. Without focus tracking, or with `SPRITE_PERSIST=0`, sprites animate once.
 
 Flashing is on by default. Run `herdr-alert set flash off` to disable flashing, or `herdr-alert set flash on` to enable it. This preference is saved for manual previews (`herdr-alert play` and `alert8play`) and automatic alerts. Herdr does not need to be running for terminal previews.
 
@@ -94,8 +116,7 @@ Picks are cached per **project and branch**: by the repository's own git directo
 
 ## Use your own animation
 
-Import a GIF or animated PNG containing the complete scene, such as a character
-jumping over an obstacle:
+Import a GIF or animated PNG containing the complete scene, such as a character jumping over an obstacle:
 
 ```sh
 herdr-alert set animation ./jump-scene.gif
@@ -107,31 +128,11 @@ herdr-alert set blocked-sprite default  # Back to that sound's own paired artwor
 herdr-alert set animation default       # Clear the imported scene entirely
 ```
 
-The custom animation is a **category of sprite**, selected the same way as any
-named alert's own artwork — assigned per event with `set blocked-sprite`/
-`set done-sprite custom`, not a separate master on/off switch. `set animation
-on|off` is a shorthand that assigns or clears `custom` on both events at once.
-Once imported, it shows up as a `(custom animation)` row in `herdr-alert list`
-and at the top of the `tui`'s Alerts tab; pressing `B`/`D` there does the same
-assignment. Because it isn't a catalog entry, `b`/`d` (which assign a *sound*)
-don't apply to it.
+The custom animation is a **category of sprite**, selected the same way as any named alert's own artwork — assigned per event with `set blocked-sprite`/`set done-sprite custom`, not a separate master on/off switch. `set animation on|off` is a shorthand that assigns or clears `custom` on both events at once. Once imported, it shows up as a `(custom animation)` row in `herdr-alert list` and at the top of the `tui`'s Alerts tab; pressing `B`/`D` there does the same assignment. Because it isn't a catalog entry, `b`/`d` (which assign a *sound*) don't apply to it.
 
-Import requires `uv` and uses Pillow, the same image library used by sprite
-downloads. The scene is copied into the user data directory and converted once;
-the original file is no longer needed. Import preserves frame timing, transparency,
-and aspect ratio. Scenes may contain up to 600 frames, measure up to 512×512 pixels,
-last up to 30 seconds per cycle, and occupy up to 64 MiB when decoded.
+Import requires `uv` and uses Pillow, the same image library used by sprite downloads. The scene is copied into the user data directory and converted once; the original file is no longer needed. Import preserves frame timing, transparency, and aspect ratio. Scenes may contain up to 600 frames, measure up to 512×512 pixels, last up to 30 seconds per cycle, and occupy up to 64 MiB when decoded.
 
-Assigned as a sprite, it renders **full-screen** — scaled to fill most of the
-pane and centered, rather than tucked into the small top-right corner catalog
-sprites use — since a custom scene is meant to be seen, not just glanced at.
-A focused pane plays the whole scene once. An unfocused pane loops it without a
-pause between cycles and clears it when you return. Sound plays once per alert.
-Custom scenes apply to previews and needs-attention alerts; finished alerts keep
-their existing sound and flash behavior (sprites, custom or not, never show on
-a finished alert). A bare `herdr-alert play` (no NAME) never shows the custom
-scene on its own, since it isn't previewing any specific event — preview it
-directly via the `tui`'s `(custom animation)` row instead.
+Assigned as a sprite, it renders **full-screen** — scaled to fill most of the pane and centered, rather than tucked into the small top-right corner catalog sprites use — since a custom scene is meant to be seen, not just glanced at. A focused pane plays the whole scene once. An unfocused pane loops it without a pause between cycles and clears it when you return. Sound plays once per alert. Custom scenes apply to previews and needs-attention alerts; finished alerts keep their existing sound and flash behavior (sprites, custom or not, never show on a finished alert). A bare `herdr-alert play` (no NAME) never shows the custom scene on its own, since it isn't previewing any specific event — preview it directly via the `tui`'s `(custom animation)` row instead.
 
 ## Commands
 
@@ -179,10 +180,9 @@ HERDR_VOLUME_DONE=1.0
 HERDR_ALERT_MAX_SECONDS=3
 HERDR_ALERT_FLASH=1   # 0 disables flashing
 HERDR_ALERT_SPRITE=1  # 0 disables sprites
-HERDR_ALERT_ANIMATION_ENABLED=1  # 0 uses normal sprites instead of custom artwork
 ```
 
-Previews use the done-volume and duration settings. The CLI saves sound choices, flash, sprite and animation preferences, and enabled state in a marked section at the end of this file, backing up existing settings. `set blocked` and `set done` also clear that event's custom file override.
+Previews use the done-volume and duration settings. The CLI saves sound choices, flash, sprite, and animation preferences in a marked section at the end of this file, backing up existing settings. `set blocked` and `set done` also clear that event's custom file override.
 
 ## No sound?
 
@@ -198,7 +198,7 @@ The catalog is `data/packs.json`; regenerate the committed event lookup after ed
 python3 scripts/build/gen-alert-tables.py
 ```
 
-`src/` contains the Rust CLI. `bin/` contains its public launchers, `hooks/` contains the pane event adapter, and `libexec/` contains the compiled binary and private playback/download helpers. `generated/alerts.zsh` is the generated lookup. The old `scripts/dev/` sprite entry points delegate to the runtime downloaders.
+`src/` contains the Rust CLI. `bin/` contains its public launchers, `hooks/` contains the pane event adapter, and `libexec/` contains the compiled binary and private playback/download helpers. `generated/alerts.zsh` is the generated lookup. The old `scripts/dev/` sprite entry points delegate to the runtime downloaders. [`CONTEXT.md`](CONTEXT.md) defines the terminology used throughout this codebase (alert, preview, flash, sprite, pack, and so on) for contributors.
 
 ```sh
 cargo test --locked
@@ -211,15 +211,12 @@ uv run --with pillow python tests/test_animation.py
 
 The integration check compiles the Rust executable, then tests Bash/Zsh commands, settings, downloads, compatibility aliases, and playback errors with stubs. It does not play audio or download sound packs. Build locally with `sh scripts/build/install.sh`. Cargo dependencies are pinned in `Cargo.lock`.
 
-`tests/test_sprite_flicker.py --herdr` records actual animation pixels in an isolated
-X11 desktop with Kitty, Herdr, and FFmpeg. It checks for blank frames during slow
-image delivery, verifies movement, and confirms cleanup. Run without `--herdr`
-to check Kitty directly.
+`tests/test_sprite_flicker.py --herdr` records actual animation pixels in an isolated X11 desktop with Kitty, Herdr, and FFmpeg. It checks for blank frames during slow image delivery, verifies movement, and confirms cleanup. Run without `--herdr` to check Kitty directly.
 
 `tests/test_flash_visual.py` checks actual rendered pixels in an X11 desktop with Herdr and Kitty. Run it with an explicit test pane and crop, as shown in the script's help, to verify the flash appears and the background is restored.
 
 ## License
 
-See [CHANGELOG.md](CHANGELOG.md) for release history and [SECURITY.md](SECURITY.md) for vulnerability reporting. Sprite-renderer provenance is recorded in [vendor/sprite/ORIGIN.md](vendor/sprite/ORIGIN.md).
-
 Original project code is licensed under the [MIT License](LICENSE). Third-party code and media retain their own terms; this license does not grant rights to game assets, downloaded themes, or other third-party content.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and [SECURITY.md](SECURITY.md) for vulnerability reporting. Sprite-renderer provenance is recorded in [vendor/sprite/ORIGIN.md](vendor/sprite/ORIGIN.md).
