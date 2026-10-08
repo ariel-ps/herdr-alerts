@@ -118,11 +118,12 @@ sub show_frame {
 # works on a machine that never synced.
 sub load_pack {
     my $dir = $ENV{SPRITE_DIR} || "$ENV{HOME}/.cache/dev-env-alert/sprites";
-    # Packs live per game (sprites/<game>/*.rgba) so the sprite can match the
-    # sound that fired it. SPRITE_GAME picks the game; a game with no art of
-    # its own borrows from whatever is synced rather than dropping to the disc.
-    my @dirs = grep { -d } ($ENV{SPRITE_GAME} ? "$dir/$ENV{SPRITE_GAME}" : (),
-                            glob("$dir/*/"), $dir);
+    # Packs live per game (sprites/<game>/*.rgba) so the sprite always matches
+    # the sound that fired it. SPRITE_GAME picks the game; a game with no art
+    # of its own (sprites: null in packs.json, e.g. kirby/metalgear/doom) gets
+    # no sprite at all here and falls through to the generic procedural disc
+    # below, never another game's character.
+    my @dirs = grep { -d } ($ENV{SPRITE_GAME} ? "$dir/$ENV{SPRITE_GAME}" : glob("$dir/*/"));
     my @packs;
     for my $d (@dirs) {
         @packs = $ENV{SPRITE_NAME} ? ("$d/$ENV{SPRITE_NAME}.rgba")
