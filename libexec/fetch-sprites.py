@@ -138,14 +138,19 @@ def build_mario(src, out):
     # Koopa's walk frames, landing on its shell frame (enemies.py:172,
     # jumped_on's frame_index 2) — the same stomp-to-shell sequence the game
     # itself plays, just drawn as one scene instead of two separate sprites.
+    # Both the Koopa's neck (its walk frame's top couple of rows) and Mario's
+    # trailing foot (his jump frame's bottom couple of rows) taper to a 1-3px
+    # sliver, so lining the two frames up edge-to-edge reads as disconnected
+    # clutter. Overlapping into each one's solid mass instead — Mario's torso
+    # over the Koopa's shell — reads as contact.
     jump_rect = (144, 32, 16, 16)
     stomp_frames = [
         composite((16, 40), [(enemies_sheet, (150, 0, 16, 24), (0, 16)),
-                             (mario_sheet, jump_rect, (0, 4))]),
+                             (mario_sheet, jump_rect, (0, 11))]),
         composite((16, 40), [(enemies_sheet, (180, 0, 16, 24), (0, 16)),
-                             (mario_sheet, jump_rect, (0, 0))]),
+                             (mario_sheet, jump_rect, (0, 13))]),
         composite((16, 40), [(enemies_sheet, (360, 5, 16, 15), (0, 25)),
-                             (mario_sheet, jump_rect, (0, 9))]),
+                             (mario_sheet, jump_rect, (0, 11))]),
     ]
     write_pack(stomp_frames, out / "stomp.rgba")
     return len(packs) + 1
