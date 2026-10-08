@@ -11,6 +11,10 @@ herdr-alert download mario       # Get sounds and sprite artwork
 herdr-alert set done 1up         # Use it when an agent finishes
 ```
 
+`herdr-alert tui` opens a full-screen menu for everything below — browsing alerts, downloads, settings, and status:
+
+![herdr-alert tui — Alerts tab](docs/images/tui-alerts.png)
+
 ## Install
 
 [Herdr Setup](https://github.com/ariel-ps/herdr-setup#prerequisites) installs Herdr, this plugin, and the other setup plugins with their dependencies. Supports macOS, Ubuntu/Debian, and Fedora, with bash or zsh.
