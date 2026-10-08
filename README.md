@@ -1,5 +1,6 @@
 # Herdr Alerts
 
+[![CI](https://github.com/ariel-ps/herdr-alerts/actions/workflows/ci.yml/badge.svg)](https://github.com/ariel-ps/herdr-alerts/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Herdr plugin](https://img.shields.io/badge/Herdr-plugin-5b8def.svg)](https://herdr.dev)
 [![Rust](https://img.shields.io/badge/Rust-1.87%2B-orange.svg)](Cargo.toml)
@@ -191,6 +192,8 @@ Run `herdr-alert status`, then `herdr-alert play`. Status checks settings and th
 If a named sound is missing, run `herdr-alert download PACK` using the pack shown by `list`. Downloads are cached under `${XDG_CACHE_HOME:-$HOME/.cache}/herdr-kit` and reused across upgrades.
 
 ## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full checklist before opening a PR; [CI](.github/workflows/ci.yml) runs the same checks on every push and pull request.
 
 The catalog is `data/packs.json`; regenerate the committed event lookup after editing it:
 

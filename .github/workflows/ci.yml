@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo test --locked
+      - run: cargo clippy --locked --all-targets -- -D warnings
+
+  python:
+    runs-on: ubuntu-latest
+    env:
+      # Cleared explicitly: a leftover Herdr session's env leaking into these
+      # tests makes them shell out to the real herdr binary instead of the
+      # stubs the tests set up, which fails in a way that looks environmental.
+      HERDR_BIN_PATH: ""
+      HERDR_SOCKET_PATH: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y zsh jq perl
+      - run: python3 tests/test_plugin.py
+      - uses: astral-sh/setup-uv@v3
+      - run: uv run --with pillow python tests/test_animation.py
+      - run: uv run --with pillow --with pycryptodome python tests/test_sprite_downloads.py

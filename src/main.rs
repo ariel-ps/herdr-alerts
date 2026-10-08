@@ -348,9 +348,8 @@ fn list_backgrounds(catalog: &Catalog, config: &settings::Config) -> Result<()> 
     let current = config.get("HERDR_BACKGROUND");
     println!("{:<10} DESCRIPTION", "NAME");
     println!(
-        "{:<10} {}{}",
+        "{:<10} no backdrop; sprite floats on the pane as today{}",
         "none",
-        "no backdrop; sprite floats on the pane as today",
         if current.is_empty() { "  (current)" } else { "" }
     );
     let mut rows = catalog.backgrounds()?;
