@@ -22,7 +22,7 @@ __herdr_alert_spec() {
     coin) alert_game='mario'; alert_clip='coin (nes)'; alert_sprite='star' ;;
     powerup) alert_game='mario'; alert_clip='Power Up (nes)'; alert_sprite='fireflower' ;;
     die) alert_game='mario'; alert_clip='Mario 1 - Die'; alert_sprite='goomba' ;;
-    stomp) alert_game='mario'; alert_clip='Mario 1 - Die'; alert_sprite='stomp' ;;
+    stomp) alert_game='mario'; alert_clip='stomp'; alert_sprite='stomp' ;;
     gameover) alert_game='mario'; alert_clip='Mario 1 - Game Over'; alert_sprite='koopa' ;;
     waiting) alert_game='mario'; alert_clip='Break Brick'; alert_sprite='jump' ;;
     dk) alert_game='mvdk'; alert_sprite='dk' ;;

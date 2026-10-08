@@ -84,7 +84,7 @@
     "coin":       { "game": "mario", "mood": "coin", "sprite": "star", "vibe": "a coin pickup -- small steady progress, one step at a time" },
     "powerup":    { "game": "mario", "mood": "powerup", "sprite": "fireflower", "vibe": "gaining a power-up -- an upgrade, a dependency bump, new capability" },
     "die":        { "game": "mario", "mood": "error",   "sprite": "goomba", "vibe": "a death jingle -- a bug fix, a crash, something failed" },
-    "stomp":      { "game": "mario", "mood": "error",   "sprite": "stomp", "vibe": "jumping on a Koopa -- squashing a bug, finishing it off for good" },
+    "stomp":      { "game": "mario", "clip": "stomp",   "sprite": "stomp", "vibe": "jumping on a Koopa -- squashing a bug, finishing it off for good" },
     "gameover":   { "game": "mario", "mood": "fatal",   "sprite": "koopa", "vibe": "game over -- a fatal error, a hard abort, a severe regression" },
     "waiting":    { "game": "mario", "mood": "waiting", "sprite": "jump", "vibe": "treading water -- blocked on review, waiting on something external" },
 
