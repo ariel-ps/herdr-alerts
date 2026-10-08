@@ -138,19 +138,22 @@ def build_mario(src, out):
     # Koopa's walk frames, landing on its shell frame (enemies.py:172,
     # jumped_on's frame_index 2) — the same stomp-to-shell sequence the game
     # itself plays, just drawn as one scene instead of two separate sprites.
-    # Both the Koopa's neck (its walk frame's top couple of rows) and Mario's
-    # trailing foot (his jump frame's bottom couple of rows) taper to a 1-3px
-    # sliver, so lining the two frames up edge-to-edge reads as disconnected
-    # clutter. Overlapping into each one's solid mass instead — Mario's torso
-    # over the Koopa's shell — reads as contact.
+    # level1.py:880-888 — the game never draws Mario standing on a flattened
+    # shell; it snaps mario.rect.bottom to the *walking* Koopa's rect.top
+    # (zero overlap) for one instant, then immediately launches Mario upward
+    # (y_vel=-7) while the Koopa separately switches to its shell frame. So
+    # the true sequence is fall-with-gap, exact-touch contact, then Mario
+    # already clear of the shell he left behind — not Mario parked on top.
     jump_rect = (144, 32, 16, 16)
+    ground = 48  # shared baseline so walking and shell frames share a floor
+    koopa_top, shell_top = ground - 24, ground - 15
     stomp_frames = [
-        composite((16, 40), [(enemies_sheet, (150, 0, 16, 24), (0, 16)),
-                             (mario_sheet, jump_rect, (0, 11))]),
-        composite((16, 40), [(enemies_sheet, (180, 0, 16, 24), (0, 16)),
-                             (mario_sheet, jump_rect, (0, 13))]),
-        composite((16, 40), [(enemies_sheet, (360, 5, 16, 15), (0, 25)),
-                             (mario_sheet, jump_rect, (0, 11))]),
+        composite((16, 56), [(enemies_sheet, (150, 0, 16, 24), (0, koopa_top)),
+                             (mario_sheet, jump_rect, (0, koopa_top - 6 - 16))]),
+        composite((16, 56), [(enemies_sheet, (180, 0, 16, 24), (0, koopa_top)),
+                             (mario_sheet, jump_rect, (0, koopa_top - 16))]),
+        composite((16, 56), [(enemies_sheet, (360, 5, 16, 15), (0, shell_top)),
+                             (mario_sheet, jump_rect, (0, 1))]),
     ]
     write_pack(stomp_frames, out / "stomp.rgba")
     return len(packs) + 1
