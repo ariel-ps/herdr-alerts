@@ -28,6 +28,15 @@
 
   "redalert_sprites": ["1tnk", "harv", "tsla", "orca", "mgun", "veh-hit1"],
 
+  "backgrounds": {
+    "_comment": "Original backdrops a sprite plays over, picked with set background NAME. sprite.pl draws these procedurally at whatever size the sprite box ends up being -- plain gradients and patterns, not game art, so there is nothing to download.",
+    "sky":   "pale blue-to-white sky gradient",
+    "dusk":  "warm orange-to-purple sunset gradient",
+    "night": "dark starfield",
+    "grid":  "dark technical grid",
+    "solid": "flat neutral backdrop"
+  },
+
   "sprite_sound": {
     "_comment": "Red Alert sprite -> the clip that belongs with it. An alert that names one of these sprites and no clip gets its sound from here, so the pairing is stated once.",
     "tsla": "TSLACHG2",

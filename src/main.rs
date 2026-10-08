@@ -45,6 +45,8 @@ Commands:
   set animation FILE  Import a GIF/animated PNG, shown full-screen when assigned
   set animation on|off  Assign/unassign it as both blocked and done's sprite
   set animation default  Clear the imported animation entirely
+  backgrounds           List the original backdrops a sprite can play over
+  set background NAME  Play every sprite over that backdrop (default: none)
   enable / disable     Enable or mute automatic alerts
   status               Check settings and audio backend
 
@@ -331,6 +333,36 @@ impl Catalog {
             Ok(())
         }
     }
+    fn backgrounds(&self) -> Result<Vec<(String, String)>> {
+        Ok(self.data["backgrounds"]
+            .as_object()
+            .ok_or_else(|| failure("invalid background catalog"))?
+            .iter()
+            .filter(|(name, _)| valid_name(name))
+            .map(|(name, desc)| (name.clone(), desc.as_str().unwrap_or("").to_string()))
+            .collect())
+    }
+}
+
+fn list_backgrounds(catalog: &Catalog, config: &settings::Config) -> Result<()> {
+    let current = config.get("HERDR_BACKGROUND");
+    println!("{:<10} DESCRIPTION", "NAME");
+    println!(
+        "{:<10} {}{}",
+        "none",
+        "no backdrop; sprite floats on the pane as today",
+        if current.is_empty() { "  (current)" } else { "" }
+    );
+    let mut rows = catalog.backgrounds()?;
+    rows.sort();
+    for (name, desc) in &rows {
+        println!(
+            "{name:<10} {desc}{}",
+            if current == name { "  (current)" } else { "" }
+        );
+    }
+    println!("\nSet:     herdr-alert set background NAME\nClear:   herdr-alert set background default");
+    Ok(())
 }
 
 fn valid_name(name: &str) -> bool {
@@ -441,6 +473,7 @@ fn preview(root: &Path, name: Option<&str>, flash_flag: bool, custom_scene: bool
         } else {
             command.env("SPRITE_FILE", "").env("SPRITE_FULLSCREEN", "");
         }
+        command.env("BACKGROUND_NAME", config.get("HERDR_BACKGROUND"));
         Some(command.spawn().map_err(failure)?)
     } else {
         None
@@ -504,6 +537,12 @@ fn status(root: &Path, catalog: &Catalog, config: &settings::Config) -> Result<(
         } else {
             "off"
         }
+    );
+    let background = config.get("HERDR_BACKGROUND");
+    println!(
+        "  {:<18} {}",
+        "Background",
+        if background.is_empty() { "none (see herdr-alert backgrounds)" } else { background }
     );
     println!(
         "  {:<18} {}\n\nAlerts\n  {:<10} {:<8} SOUND",
@@ -628,6 +667,9 @@ fn execute(mut args: Vec<String>) -> Result<()> {
         "auto" if args.len() <= 2 => auto::run(&root, args.get(1).map(String::as_str)),
         "list" if args.len() <= 2 => Catalog::load(&root)?
             .list(args.get(1).map(String::as_str), settings::Config::load(&root).ok().as_ref()),
+        "backgrounds" if args.len() == 1 => {
+            list_backgrounds(&Catalog::load(&root)?, &settings::Config::load(&root)?)
+        }
         "status" if args.len() == 1 => status(
             &root,
             &Catalog::load(&root)?,
@@ -803,6 +845,27 @@ fn execute(mut args: Vec<String>) -> Result<()> {
                     "{} now shows {}'s sprite.\nPreview the paired sound separately: herdr-alert play {}",
                     args[1], args[2], args[2]
                 );
+            }
+            Ok(())
+        }
+        "set" if args.len() == 3 && args[1] == "background" => {
+            let value = if args[2] == "default" || args[2] == "none" {
+                String::new()
+            } else {
+                let names = Catalog::load(&root)?.backgrounds()?;
+                if !names.iter().any(|(name, _)| name == &args[2]) {
+                    return Err(usage(format!(
+                        "Unknown background: {}. Run herdr-alert backgrounds.",
+                        args[2]
+                    )));
+                }
+                args[2].clone()
+            };
+            settings::save(&root, &[("HERDR_BACKGROUND".into(), value)])?;
+            if args[2] == "default" || args[2] == "none" {
+                println!("Background cleared; sprites float with no backdrop.");
+            } else {
+                println!("Background set to {}.\nPreview: herdr-alert play", args[2]);
             }
             Ok(())
         }

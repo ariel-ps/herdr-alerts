@@ -182,8 +182,11 @@ sub load_pack {
     if ($tw != $w || $th != $h) {
         @f = map { scale_frame($_, $w, $h, $tw, $th) } @f;
     }
-    my $backdrop = $ENV{SPRITE_BACKDROP} // !$version;
-    @f = map { backdrop($_) } @f if $backdrop;
+    if (my $bg = background_buffer($tw, $th)) {
+        @f = map { composite_background($_, $bg) } @f;
+    } elsif ($ENV{SPRITE_BACKDROP} // !$version) {
+        @f = map { backdrop($_) } @f;
+    }
     return ($tw, $th, \@f, \@delays, $version);
 }
 
@@ -216,6 +219,84 @@ sub backdrop {
 sub invalid_pack {
     warn "herdr-alert: animation is missing or invalid; using fallback artwork. Reimport it with herdr-alert set animation FILE.gif.\n";
     return;
+}
+
+# Original, generic backdrops a sprite can play over -- flat colour,
+# gradients, or a simple generated pattern, picked with
+# `herdr-alert set background NAME` (data/packs.json's "backgrounds"). Not
+# game art, so these are drawn procedurally at whatever size the sprite box
+# ends up being, the same way the fallback disc above is, rather than being a
+# file anyone has to fetch.
+my %BACKGROUNDS = (
+    sky   => sub { bg_gradient([96, 150, 224], [198, 224, 246], @_) },
+    dusk  => sub { bg_gradient([255, 150, 96], [48, 32, 76], @_) },
+    night => sub { bg_stars(@_) },
+    grid  => sub { bg_grid(@_) },
+    solid => sub { bg_solid([28, 28, 32], @_) },
+);
+
+sub bg_gradient {
+    my ($top, $bottom, $w, $h) = @_;
+    my $px = '';
+    for my $y (0 .. $h - 1) {
+        my $t = $h > 1 ? $y / ($h - 1) : 0;
+        my @rgb = map { int($top->[$_] + ($bottom->[$_] - $top->[$_]) * $t) } 0 .. 2;
+        $px .= pack('C4', @rgb, 255) x $w;
+    }
+    return $px;
+}
+
+sub bg_solid {
+    my ($rgb, $w, $h) = @_;
+    return pack('C4', @$rgb, 255) x ($w * $h);
+}
+
+# A fixed small LCG rather than Perl's rand: the same name should look the
+# same every time, not reseed from the clock on every alert.
+sub bg_stars {
+    my ($w, $h) = @_;
+    my @px = unpack 'C*', bg_gradient([8, 8, 20], [28, 22, 48], $w, $h);
+    my $seed = 7;
+    for (1 .. int($w * $h / 24)) {
+        $seed = ($seed * 1103515245 + 12345) & 0x7fffffff;
+        my $x = $seed % $w;
+        $seed = ($seed * 1103515245 + 12345) & 0x7fffffff;
+        my $y = $seed % $h;
+        my $i = ($y * $w + $x) * 4;
+        @px[$i .. $i + 3] = (235, 235, 255, 255);
+    }
+    return pack 'C*', @px;
+}
+
+sub bg_grid {
+    my ($w, $h) = @_;
+    my $step = $w >= 8 ? int($w / 8) : 1;
+    my $px = '';
+    for my $y (0 .. $h - 1) {
+        for my $x (0 .. $w - 1) {
+            my $on_line = ($x % $step == 0) || ($y % $step == 0);
+            $px .= $on_line ? pack('C4', 54, 64, 78, 255) : pack('C4', 20, 22, 28, 255);
+        }
+    }
+    return $px;
+}
+
+sub background_buffer {
+    my ($w, $h) = @_;
+    my $name = $ENV{BACKGROUND_NAME} or return;
+    my $gen = $BACKGROUNDS{$name} or return;
+    return $gen->($w, $h);
+}
+
+# Fills only the see-through pixels, so the sprite's own art always wins.
+sub composite_background {
+    my ($frame, $bg) = @_;
+    my @p = unpack 'C*', $frame;
+    my @b = unpack 'C*', $bg;
+    for (my $i = 0; $i < @p; $i += 4) {
+        @p[$i .. $i + 3] = @b[$i .. $i + 3] if $p[$i + 3] == 0;
+    }
+    return pack 'C*', @p;
 }
 
 my ($pack_w, $pack_h, $pack_frames, $pack_delays, $timed) = load_pack();

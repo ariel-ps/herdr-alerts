@@ -38,6 +38,8 @@
 #                                         selected the same way as any other,
 #                                         not a separate on/off switch
 #   SPRITE_NAME=<name>          override the sprite the alert chose
+#   HERDR_BACKGROUND=<name>     original backdrop every sprite plays over
+#                               (herdr-alert backgrounds for the list)
 #
 # `herdr-alert auto` LLM-picks a name per project+branch from its branch and
 # commits, caching it in ${XDG_DATA_HOME:-~/.local/share}/herdr-alert/projects.json,
@@ -130,6 +132,7 @@ case "$state" in
            sprite_pick="${HERDR_SPRITE_DONE:-}" ;;
   *)       exit 0 ;;
 esac
+background_pick="${HERDR_BACKGROUND:-}"
 
 # A project+branch-scoped pick from `herdr-alert auto`/`auto set`, consulted
 # only when that cache file exists; wins over the plain global name but not
@@ -186,6 +189,7 @@ fi
 if [[ -n "$pane" && "$pane" != *[^a-zA-Z0-9_:-]* ]]; then
   SPRITE_FILE="$sprite_file_pick" SPRITE_FULLSCREEN="$sprite_fullscreen_pick" \
   SPRITE_GAME="${sprite_game_pick:-}" SPRITE_NAME="${SPRITE_NAME:-$sprite_name_pick}" \
+  BACKGROUND_NAME="$background_pick" \
   zsh "$root/libexec/herdr-visuals" "$pane" "$state" "$name" \
     "${HERDR_ALERT_FLASH:-1}" "${HERDR_ALERT_SPRITE:-1}" &!
 fi
