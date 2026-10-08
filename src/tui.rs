@@ -218,7 +218,10 @@ impl App {
                 });
             }
         }
-        rows.sort_by(|a, b| a.name.cmp(&b.name));
+        // Grouped by game (then by name within it) so a pack's alerts sit
+        // together, instead of interleaving every game alphabetically by
+        // alert name.
+        rows.sort_by(|a, b| (&a.game, &a.name).cmp(&(&b.game, &b.name)));
         // Auto-detected: pinned first whenever a custom animation has been
         // imported (`set animation FILE`), regardless of pack filter. It's a
         // category of sprite like any other -- selected via set blocked-sprite/

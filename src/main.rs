@@ -216,13 +216,19 @@ impl Catalog {
         let alerts = self.data["alerts"]
             .as_object()
             .ok_or_else(|| failure("invalid alert catalog"))?;
-        let mut shown = 0;
+        let mut rows = Vec::new();
         for name in alerts.keys().filter(|name| !name.starts_with('_')) {
             let (game, clip) = self.alert(name)?;
             if filter.is_some_and(|f| f != game) {
                 continue;
             }
-            shown += 1;
+            rows.push((game.to_string(), name.clone(), clip.to_string()));
+        }
+        // Grouped by game (then by name within it) so a pack's alerts sit
+        // together, instead of interleaving every game alphabetically by
+        // alert name.
+        rows.sort();
+        for (game, name, clip) in &rows {
             let status = if self.resolve(name).is_ok() {
                 "ready"
             } else {
@@ -230,10 +236,10 @@ impl Catalog {
             };
             println!(
                 "{name:<12} {game:<10} {status:<10} {}",
-                if clip.is_empty() { "(any)" } else { clip }
+                if clip.is_empty() { "(any)" } else { clip.as_str() }
             );
         }
-        if shown == 0 {
+        if rows.is_empty() {
             println!("(no alerts for this pack)");
         }
         println!("\nPreview:  herdr-alert play NAME\nDownload: herdr-alert download PACK");
