@@ -4,12 +4,11 @@
 Each game's art comes from a project that ships both the sprite sheet and the
 frame data describing it, so nothing here guesses at where a frame starts:
 
-  mario         justinmeister/Mario-Level-1   frame rects in data/components/*.py
-  mvdk          plemaster01/PythonDonkeyKong  one PNG per frame
-  sonic         clarkeadg/opensonic-js        JSON grid + animation frame indices
-  punchout      justin-austria/PunchOut       frame rects in lib/js/entities/*.js
-  dangerousdave lightest/webdave              frame rects in player.js's own Sprite() calls
-  redalert      the game's own MIX archives   (see fetch-redalert-sprites.py)
+  mario     justinmeister/Mario-Level-1   frame rects in data/components/*.py
+  mvdk      plemaster01/PythonDonkeyKong  one PNG per frame
+  sonic     clarkeadg/opensonic-js        JSON grid + animation frame indices
+  punchout  justin-austria/PunchOut       frame rects in lib/js/entities/*.js
+  redalert  the game's own MIX archives   (see fetch-redalert-sprites.py)
 
 Pack format, read by sprite.pl's load_pack: u16 frames, u16 w, u16 h,
 u16 pad, then frames * w * h * 4 bytes of RGBA. Frames are square and share one
@@ -173,27 +172,8 @@ def build_punchout(src, out):
     return len(packs)
 
 
-def build_dangerousdave(src, out):
-    # Frame geometry copied from player.js's own Sprite() calls (states.running /
-    # states.jumping, right-facing origin), not guessed: the sheet packs every
-    # pose at 48x64 starting x=0, in that same order. The background is already
-    # alpha-keyed in the PNG but also carries real black linework, so this keys
-    # on the sheet's own corner colour (like sonic/punchout) rather than on
-    # black, which would eat the outline.
-    sheet = src / "sprites/dave.png"
-    packs = {
-        "walk": (sheet, [(48, 0, 48, 64), (96, 0, 48, 64),
-                         (144, 0, 48, 64), (192, 0, 48, 64)]),
-        "jump": (sheet, [(240, 0, 48, 64)]),
-    }
-    for name, (sheet_path, rects) in packs.items():
-        write_pack(from_rects(sheet_path, rects, "corner"), out / f"{name}.rgba")
-    return len(packs)
-
-
 BUILDERS = {"mario": build_mario, "mvdk": build_mvdk,
-            "sonic": build_sonic, "punchout": build_punchout,
-            "dangerousdave": build_dangerousdave}
+            "sonic": build_sonic, "punchout": build_punchout}
 
 
 def main() -> int:

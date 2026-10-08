@@ -224,8 +224,7 @@ exit "${PLAYBACK_EXIT:-0}"
         assert invoke('sync', extra_env=sync_env, command='herdr-sound').returncode == 0
         packs = json.loads((plugin / 'data/packs.json').read_text())['games']
         assert sync_log.read_text().splitlines().count('run') == sum(
-            (1 + bool(spec.get('sprites')) + (name == 'dangerousdave'))
-            for name, spec in packs.items()
+            (1 + bool(spec.get('sprites'))) for spec in packs.values()
             if isinstance(spec, dict) and spec.get('sounds'))
         assert 'pycryptodome' in sync_log.read_text()
         assert 'pillow' in sync_log.read_text()

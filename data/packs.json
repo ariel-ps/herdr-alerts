@@ -23,9 +23,7 @@
                    "sprites": "https://openra.baxxster.no/openra/ra-base.zip",
                    "sprites_sha256": "4d3c14b2c6a00c042df16a99ff00ede8aa177e0d21a87cb43f84fbe73af56280" },
     "doom":      { "sounds": null,
-                   "sprites": "git:https://github.com/Doom-Utils/shareware-collection" },
-    "dangerousdave": { "sounds": "git:https://github.com/lightest/webdave",
-                       "sprites": "git:https://github.com/lightest/webdave" }
+                   "sprites": "git:https://github.com/Doom-Utils/shareware-collection" }
   },
 
   "redalert_sprites": ["1tnk", "harv", "tsla", "orca", "mgun", "veh-hit1"],
@@ -73,7 +71,7 @@
 
     "win":        { "game": "mario", "mood": "done",    "sprite": "star", "vibe": "stage-clear fanfare -- a clean, satisfying finish" },
     "1up":        { "game": "mario", "mood": "success", "sprite": "mushroom", "vibe": "earning an extra life -- a nice win, shipped/merged" },
-    "coin":       { "game": "mario", "mood": "coin", "vibe": "a coin pickup -- small steady progress, one step at a time" },
+    "coin":       { "game": "mario", "mood": "coin", "sprite": "star", "vibe": "a coin pickup -- small steady progress, one step at a time" },
     "powerup":    { "game": "mario", "mood": "powerup", "sprite": "fireflower", "vibe": "gaining a power-up -- an upgrade, a dependency bump, new capability" },
     "die":        { "game": "mario", "mood": "error",   "sprite": "goomba", "vibe": "a death jingle -- a bug fix, a crash, something failed" },
     "gameover":   { "game": "mario", "mood": "fatal",   "sprite": "koopa", "vibe": "game over -- a fatal error, a hard abort, a severe regression" },
@@ -84,13 +82,7 @@
     "punchout":   { "game": "punchout",  "sprite": "mac", "vibe": "a boxing match -- a head-to-head fight, adversarial debugging, a tough opponent bug" },
     "spin":       { "game": "sonic",     "sprite": "spin", "vibe": "a speed dash -- fast-moving work, a quick turnaround, performance tuning" },
     "codec":      { "game": "metalgear", "vibe": "a stealth codec call -- security work, covert ops, hardening, sneaking past a hard problem" },
-    "kirby":      { "game": "kirby", "vibe": "cute and gentle -- low-stakes polish, docs, cosmetic/UI tweaks" },
-
-    "dave":       { "game": "dangerousdave", "clip": "oneUp",      "sprite": "walk", "vibe": "Dangerous Dave's own theme -- adventurous exploration, a new feature area" },
-    "davejump":   { "game": "dangerousdave", "clip": "jump",       "sprite": "jump", "vibe": "a jump over a gap -- a risky leap, an experimental change" },
-    "davedeath":  { "game": "dangerousdave", "clip": "death", "vibe": "Dave's death sound -- a crash, a failed attempt, back to the start" },
-    "davewin":    { "game": "dangerousdave", "clip": "next_level", "sprite": "walk", "vibe": "end-of-stage fanfare -- a feature or milestone completed cleanly" },
-    "davewalk":   { "game": "dangerousdave", "clip": "walk",       "sprite": "walk", "vibe": "ordinary footsteps -- routine, everyday incremental work" }
+    "kirby":      { "game": "kirby", "vibe": "cute and gentle -- low-stakes polish, docs, cosmetic/UI tweaks" }
   },
 
   "states": {

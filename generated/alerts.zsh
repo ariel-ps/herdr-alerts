@@ -19,7 +19,7 @@ __herdr_alert_spec() {
     redalert) alert_game='redalert' ;;
     win) alert_game='mario'; alert_clip='Mario 1 - Win Stage'; alert_sprite='star' ;;
     1up) alert_game='mario'; alert_clip='1up'; alert_sprite='mushroom' ;;
-    coin) alert_game='mario'; alert_clip='coin (nes)' ;;
+    coin) alert_game='mario'; alert_clip='coin (nes)'; alert_sprite='star' ;;
     powerup) alert_game='mario'; alert_clip='Power Up (nes)'; alert_sprite='fireflower' ;;
     die) alert_game='mario'; alert_clip='Mario 1 - Die'; alert_sprite='goomba' ;;
     gameover) alert_game='mario'; alert_clip='Mario 1 - Game Over'; alert_sprite='koopa' ;;
@@ -30,18 +30,13 @@ __herdr_alert_spec() {
     spin) alert_game='sonic'; alert_sprite='spin' ;;
     codec) alert_game='metalgear' ;;
     kirby) alert_game='kirby' ;;
-    dave) alert_game='dangerousdave'; alert_clip='oneUp'; alert_sprite='walk' ;;
-    davejump) alert_game='dangerousdave'; alert_clip='jump'; alert_sprite='jump' ;;
-    davedeath) alert_game='dangerousdave'; alert_clip='death' ;;
-    davewin) alert_game='dangerousdave'; alert_clip='next_level'; alert_sprite='walk' ;;
-    davewalk) alert_game='dangerousdave'; alert_clip='walk'; alert_sprite='walk' ;;
     *) return 1 ;;
   esac
 }
 
 # Every name, for the hook's `--list` mode and for tab completion.
 __herdr_alert_names() {
-  print -r -- 'unit-ready tesla harvester orca kaboom redalert win 1up coin powerup die gameover waiting dk barrel punchout spin codec kirby dave davejump davedeath davewin davewalk'
+  print -r -- 'unit-ready tesla harvester orca kaboom redalert win 1up coin powerup die gameover waiting dk barrel punchout spin codec kirby'
 }
 
 # herdr transition -> the alert it plays when nothing overrides it.

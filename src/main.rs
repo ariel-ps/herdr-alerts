@@ -279,19 +279,13 @@ impl Catalog {
                         .arg(root.join("libexec/fetch-redalert-sounds.py"));
                 } else {
                     let source = packs[game]["sounds"].as_str().unwrap();
-                    if let Some(identifier) = source.strip_prefix("archive:") {
-                        command
-                            .arg("python")
-                            .arg(root.join("libexec/fetch-game-sounds.py"))
-                            .arg(identifier);
-                    } else if let Some(url) = source.strip_prefix("git:") {
-                        command
-                            .arg("python")
-                            .arg(root.join("libexec/fetch-git-sounds.py"))
-                            .arg(url);
-                    } else {
-                        return Err(failure(format!("unsupported source: {source}")));
-                    }
+                    let identifier = source
+                        .strip_prefix("archive:")
+                        .ok_or_else(|| failure(format!("unsupported source: {source}")))?;
+                    command
+                        .arg("python")
+                        .arg(root.join("libexec/fetch-game-sounds.py"))
+                        .arg(identifier);
                 }
                 if !command
                     .arg(self.cache.join(game))
@@ -300,21 +294,6 @@ impl Catalog {
                     .success()
                 {
                     failed = true;
-                }
-                if game == "dangerousdave" {
-                    // The original game's run cycle has no sound of its own;
-                    // reproduce a period-correct footstep instead of an alert
-                    // nothing was ever recorded for.
-                    if !Command::new(&uv)
-                        .args(["run", "--no-project", "python"])
-                        .arg(root.join("libexec/synth-dave-walk.py"))
-                        .arg(self.cache.join(game))
-                        .status()
-                        .map_err(failure)?
-                        .success()
-                    {
-                        failed = true;
-                    }
                 }
             }
             if packs[game]["sprites"].is_string() {
