@@ -308,7 +308,8 @@ def check_terminal_flashes():
         home = Path(temporary)
         herdr = home / 'herdr-stub'
         herdr.mkdir()
-        (herdr / 'herdr').write_text('''#!/bin/sh
+        custom_herdr = herdr / 'custom-herdr'
+        custom_herdr.write_text('''#!/bin/sh
 test "$*" = 'pane process-info --pane wN:p3' || exit 2
 printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
 ''')
@@ -320,7 +321,8 @@ printf '{"result":{"process_info":{"shell_pid":%s}}}\\n' "$FLASH_SHELL_PID"
         player.chmod(0o755)
         env = {**os.environ, 'HOME': temporary, 'XDG_CONFIG_HOME': temporary,
                'HERDR_PLUGIN_CONFIG_DIR': '', 'HERDR_PLUGIN_ROOT': str(ROOT),
-               'HERDR_PANE_ID': '', 'PATH': str(herdr) + ':' + temporary + ':' + os.environ['PATH']}
+               'HERDR_PANE_ID': '', 'HERDR_BIN_PATH': str(custom_herdr),
+               'PATH': str(herdr) + ':' + temporary + ':' + os.environ['PATH']}
         env.pop('KITTY_WINDOW_ID', None)
         binary = str(ROOT / 'bin/herdr-sound')
         config = home / 'herdr/plugins/config/dev.ariel.herdr-alerts/config.sh'
@@ -442,6 +444,7 @@ def check_sprite_settings():
         try:
             env = {**os.environ, 'HERDR_PLUGIN_CONFIG_DIR': str(config),
                    'HERDR_PLUGIN_ROOT': str(ROOT), 'XDG_CACHE_HOME': str(home / 'cache'),
+                   'HERDR_BIN_PATH': str(stubs / 'herdr'),
                    'PATH': str(stubs) + ':' + os.environ['PATH'], 'EFFECT_LOG': str(log),
                    'TEST_TTY': os.ttyname(slave).removeprefix('/dev/')}
             binary = str(ROOT / 'bin/herdr-sound')

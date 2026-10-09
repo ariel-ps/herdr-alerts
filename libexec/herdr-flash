@@ -13,7 +13,7 @@ fi
 
 terminal=/dev/tty
 if [[ -n "$pane" ]]; then
-  shell_pid=$(herdr pane process-info --pane "$pane" | jq -er '.result.process_info.shell_pid | select(type == "number")') || exit 1
+  shell_pid=$("${HERDR_BIN_PATH:-herdr}" pane process-info --pane "$pane" | jq -er '.result.process_info.shell_pid | select(type == "number")') || exit 1
   [[ "$shell_pid" == <1-> ]] || exit 1
   terminal=$(ps -o tty= -p "$shell_pid" | tr -d ' ') || exit 1
   if [[ ( "$terminal" != tty[a-zA-Z0-9]## && "$terminal" != pts/<-> ) || ! -c "/dev/$terminal" ]]; then
